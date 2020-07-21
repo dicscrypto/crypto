@@ -26,6 +26,7 @@ class Data:
         self.encrypted_end_of_day_report_file_base = getcwd() + "\\day_end_encrypted_"
 
         self.md5_of_encrypted_end_of_day_report_file = ""
+        self.end_of_day_report_upload_results = ""
 
 class Command:
     def __init__(self):
@@ -38,6 +39,10 @@ class Command:
         self.upload_end_of_day_report = "upload_end_of_day_report"
 
         self.upload_encrypted_end_of_day_report_hash = "upload_encrypted_end_of_day_report_hash"
+
+        self.create_private_and_public_key = "create_private_and_public_key"
+
+        self.check_results_for_end_of_day_reports_upload = "check_results_for_end_of_day_reports_upload"
 
 class Security:
     def __init__(self):
@@ -98,12 +103,12 @@ class Security:
         with open(self.private_key_file, 'wb') as private_key_file:
             private_key_file.write(private_key)
 
-        print("[+] Done creating Private Key.")
+        print(f"[X] Done creating Private Key: {self.private_key_file}")
 
         with open(self.public_key_file, 'wb') as public_key_file:
             public_key_file.write(public_key)
 
-        print("[+] Done creating Public Key.")
+        print(f"[X] Done creating Public Key: {self.private_key_file}")
 
     def get_file_hash(self, target_file):
         target_file_exist = path.exists(target_file)
@@ -132,12 +137,6 @@ def short_pause():
 def clear_screen():
     system("cls")
 
-def get_formatted_date_and_time():
-    now = datetime.datetime.now()
-    formatted_date_and_time = now.strftime("%Y-%m-%d_%H%M")
-
-    return(formatted_date_and_time)
-
 def send_file(connection, file_to_be_sent):
     file_to_be_sent_exists = path.exists(file_to_be_sent)
 
@@ -156,6 +155,12 @@ def download_file(connection, destination_file):
 
     with open(destination_file, "wb") as dest_file:
         dest_file.write(data)
+
+def get_formatted_date_and_time():
+    now = datetime.datetime.now()
+    formatted_date_and_time = now.strftime("%Y-%m-%d_%H%M")
+
+    return(formatted_date_and_time)
 
 def process_connection(connection, ip_address):
     user_command = connection.recv(4096).decode()
@@ -209,15 +214,31 @@ def process_connection(connection, ip_address):
                 decrypted_filename = server_data.end_of_day_report_base + ip_address + " - " + get_formatted_date_and_time() + ".txt"
                 server_side_security.decrypt_file(encrypted_end_of_day_report_filename, decrypted_filename)
                 
+                server_data.end_of_day_report_upload_results = "ok"
                 print(f"[+] Decrypting end of day report as: {decrypted_filename}")
 
             else:
+                server_data.end_of_day_report_upload_results = "not ok"
                 print("[!] Hash check for encrypted end of day report file: failed")     
 
         except Exception as error:
-            print(f"[!] Unable to decrypt: {encrypted_end_of_day_report_filename} , please check your public/private key pair.")
-            print(f"[!] Error: {error}")
+            server_data.end_of_day_report_upload_results = "not ok"
 
+            print(f"[~] Unable to decrypt: {encrypted_end_of_day_report_filename} , please check your public/private key pair.")
+            print(f"[~] Error: {error}")
+
+        return
+
+    elif user_command == command_from_client.check_results_for_end_of_day_reports_upload:
+        connection.sendall(server_data.end_of_day_report_upload_results.encode())
+
+        print("<< Completed: [Sending] end of day reports upload result. >>")
+        return
+
+    elif user_command == command_from_client.create_private_and_public_key:
+        server_side_security.create_private_and_public_key()
+        
+        connection.send(b"ok")
         return
 
 def client_thread(connection, ip_address, port):

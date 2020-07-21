@@ -37,12 +37,17 @@ class Command:
 
         self.upload_encrypted_end_of_day_report_hash = "upload_encrypted_end_of_day_report_hash"
 
+        self.create_private_and_public_key = "create_private_and_public_key"
+
+        self.check_results_for_end_of_day_reports_upload = "check_results_for_end_of_day_reports_upload"
+
 class Security:
     def __init__(self):
         self.private_key_file = getcwd() + "\\client_private.pem"
         self.public_key_file = getcwd() + "\\client_public.pem"
 
         self.server_public_key_file = getcwd() + "\\server_public.pem"
+        self.md5_of_server_public_key_file = ""
 
     def new_keys(self, key_size):
         random_generator = Random.new().read
@@ -145,6 +150,43 @@ def upload_data(command_to_be_sent, data_to_be_uploaded):
         short_pause()
         client_socket.send(data_to_be_uploaded.encode())
 
+def check_operation_results(command_to_be_sent):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+        client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
+        client_socket.sendall((command_to_be_sent.encode()))
+
+        server_reply = client_socket.recv(4096)
+
+    return server_reply.decode()
+
+def upload_end_of_day_report_and_perform_integrity_check():
+    clear_screen()
+
+    try:
+        client_side_security.encrypt_file(client_data.end_of_day_report_file, client_data.encrypted_end_of_day_report_file)
+
+        print(f"\nSuccessfully encrypted: {client_data.end_of_day_report_file}")
+        client_data.md5_of_encrypted_end_of_day_report_file = client_side_security.get_file_hash(client_data.encrypted_end_of_day_report_file)
+
+        print(f"\nMD5 Hash of encrypted end of day report file: {client_data.md5_of_encrypted_end_of_day_report_file}")
+        upload_data(command_to_server.upload_encrypted_end_of_day_report_hash, client_data.md5_of_encrypted_end_of_day_report_file)
+
+        short_pause()
+        upload_file(command_to_server.upload_end_of_day_report, client_data.encrypted_end_of_day_report_file)
+        print(f"\nSuccessfully uploaded: {client_data.encrypted_end_of_day_report_file}")
+
+        short_pause()
+        upload_operation_result = check_operation_results(command_to_server.check_results_for_end_of_day_reports_upload)
+
+        if upload_operation_result == "ok": print("\nUpload successful")
+        else: print("\nThere is something wrong with the uploading process or decryption of the report is unsuccessful.")
+
+        pause()
+
+    except Exception as error:
+        print(f"Encountered error while performing operation: {error}")
+        sys.exit(1)
+
 def download_file(command_to_be_sent, file_to_be_downloaded):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
@@ -163,13 +205,6 @@ def download_hash(command_to_be_sent):
         downloaded_hash = client_socket.recv(4096).decode()
 
     return downloaded_hash
-
-def get_operation_results():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-        client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
-        server_reply = client_socket.recv(4096).decode()
-
-    return server_reply
 
 def download_menu_and_perform_integrity_check():
     clear_screen()
@@ -191,30 +226,36 @@ def download_menu_and_perform_integrity_check():
         print(f"Encountered error while performing operation: {error}")
         sys.exit(1)
 
-def upload_end_of_day_report_and_perform_integrity_check():
+def create_private_and_public_key_on_server_and_download_server_public_key():
     clear_screen()
 
-    try:
-        client_side_security.encrypt_file(client_data.end_of_day_report_file, client_data.encrypted_end_of_day_report_file)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+        client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
 
-        print(f"\nSuccessfully encrypted: {client_data.end_of_day_report_file}")
-        short_pause()
+        client_socket.sendall((command_to_server.create_private_and_public_key.encode()))
+        print("(Create private and public key) Waiting for reply from Server...")
+        server_reply = client_socket.recv(4096).decode()
 
-        client_data.md5_of_encrypted_end_of_day_report_file = client_side_security.get_file_hash(client_data.encrypted_end_of_day_report_file)
+        if server_reply == "ok": print("\nPrivate & Public key created on the Server side.")
+        else: print("\nFailed creating Private & Public key on the Server side.")
 
-        print(f"\nMD5 Hash of encrypted end of day report file: {client_data.md5_of_encrypted_end_of_day_report_file}")
-        short_pause()
+        download_file(command_to_server.download_server_public_key_file, client_side_security.server_public_key_file)
+        print("\n(Download server public key) Waiting for reply from Server...")
 
-        upload_data(command_to_server.upload_encrypted_end_of_day_report_hash, client_data.md5_of_encrypted_end_of_day_report_file)
-        short_pause()
+        if server_reply == "ok": print("\nSuccessfully download Server's public key.")
+        else: print("\nFailed to download Server's public key.")
 
-        upload_file(command_to_server.upload_end_of_day_report, client_data.encrypted_end_of_day_report_file)
-        print(f"\nSuccessfully uploaded: {client_data.encrypted_end_of_day_report_file}")
-        pause()
+        client_side_security.md5_of_server_public_key_file = download_hash(command_to_server.download_server_public_key_file_hash)
+        local_md5_of_server_public_key_file = client_side_security.get_file_hash(client_side_security.server_public_key_file)
+        
+        print("\nPerforming hash check on downloaded server public key file.\n")
+        print(f"Local MD5 of Server's public keyfile: {local_md5_of_server_public_key_file}")
+        print(f"Downloaded MD5 of Server's public keyfile: {client_side_security.md5_of_server_public_key_file}")
 
-    except Exception as error:
-        print(f"Encountered error while performing operation: {error}")
-        sys.exit(1)
+        if local_md5_of_server_public_key_file == client_side_security.md5_of_server_public_key_file: print("\nHash check passed.")
+        else: print("\nHash check failed.")
+        
+    pause()
 
 def pause():
     print()
@@ -234,10 +275,11 @@ def print_header(header_message):
 def admin_menu():
     while True:
         clear_screen()
-        print_header("Admin Menu.")
+        print_header("Admin Menu")
 
-        print("1. Download Menu & Perform integrity check.")
-        print("2. Upload End of day report & Perform integrity check.")
+        print("1. Create Private & Public Key on Server and Download Server's Public Key.")
+        print("2. Download Menu & Perform Hash check.")
+        print("3. Upload End of day report & Perform Hash check.")
         
         instructions = "\nOnly accepts digits."
         instructions += "\nEnter '0' to exit."
@@ -247,8 +289,9 @@ def admin_menu():
             option = int(input(instructions).strip())
 
             if option == 0: break
-            elif option == 1: download_menu_and_perform_integrity_check()
-            elif option == 2: upload_end_of_day_report_and_perform_integrity_check()
+            elif option == 1: create_private_and_public_key_on_server_and_download_server_public_key()
+            elif option == 2: download_menu_and_perform_integrity_check()
+            elif option == 3: upload_end_of_day_report_and_perform_integrity_check()
 
         except ValueError:
             print("\nOnly accepts digits.")
