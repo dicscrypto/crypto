@@ -21,7 +21,6 @@ class Data:
         self.md5_of_menu_file = ""
 
         self.end_of_day_report_file = getcwd() + "\\day_end.txt"
-        self.md5_of_end_of_day_report_file = ""
 
         self.encrypted_end_of_day_report_file = getcwd() + "\\day_end_encrypted.bin"
         self.md5_of_encrypted_end_of_day_report_file = ""
@@ -35,6 +34,8 @@ class Command:
         self.download_server_public_key_file_hash = "download_server_public_key_file_hash"
 
         self.upload_end_of_day_report = "upload_end_of_day_report"
+
+        self.upload_encrypted_end_of_day_report_hash = "upload_encrypted_end_of_day_report_hash"
 
 class Security:
     def __init__(self):
@@ -136,6 +137,14 @@ def upload_file(command_to_be_sent, file_to_be_uploaded):
         print(f"[!] File not found: {file_to_be_uploaded}")
         sys.exit(1)
 
+def upload_data(command_to_be_sent, data_to_be_uploaded):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+        client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
+        client_socket.sendall((command_to_be_sent.encode()))
+
+        short_pause()
+        client_socket.send(data_to_be_uploaded.encode())
+
 def download_file(command_to_be_sent, file_to_be_downloaded):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
@@ -155,13 +164,99 @@ def download_hash(command_to_be_sent):
 
     return downloaded_hash
 
+def get_operation_results():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+        client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
+        server_reply = client_socket.recv(4096).decode()
+
+    return server_reply
+
+def download_menu_and_perform_integrity_check():
+    clear_screen()
+
+    try:
+        download_file(command_to_server.download_menu, client_data.menu_file)
+        md5_of_menu_file_from_server = download_hash(command_to_server.download_menu_hash)
+        local_md5_of_menu_file = client_side_security.get_file_hash(client_data.menu_file)
+
+        print(f"Local MD5 of menu file: {local_md5_of_menu_file}")
+        print(f"MD5 of menu file from server: {md5_of_menu_file_from_server}")
+
+        if local_md5_of_menu_file == md5_of_menu_file_from_server: print("\nHash check passed.")
+        else: print("\nHash check failed.")
+
+        pause()
+
+    except Exception as error:
+        print(f"Encountered error while performing operation: {error}")
+        sys.exit(1)
+
+def upload_end_of_day_report_and_perform_integrity_check():
+    clear_screen()
+
+    try:
+        client_side_security.encrypt_file(client_data.end_of_day_report_file, client_data.encrypted_end_of_day_report_file)
+
+        print(f"\nSuccessfully encrypted: {client_data.end_of_day_report_file}")
+        short_pause()
+
+        client_data.md5_of_encrypted_end_of_day_report_file = client_side_security.get_file_hash(client_data.encrypted_end_of_day_report_file)
+
+        print(f"\nMD5 Hash of encrypted end of day report file: {client_data.md5_of_encrypted_end_of_day_report_file}")
+        short_pause()
+
+        upload_data(command_to_server.upload_encrypted_end_of_day_report_hash, client_data.md5_of_encrypted_end_of_day_report_file)
+        short_pause()
+
+        upload_file(command_to_server.upload_end_of_day_report, client_data.encrypted_end_of_day_report_file)
+        print(f"\nSuccessfully uploaded: {client_data.encrypted_end_of_day_report_file}")
+        pause()
+
+    except Exception as error:
+        print(f"Encountered error while performing operation: {error}")
+        sys.exit(1)
+
+def pause():
+    print()
+    system("pause")
+
 def short_pause():
     time.sleep(1.5)
+
+def clear_screen():
+    system("cls")
+
+def print_header(header_message):
+    print("=" * 64)
+    print(header_message)
+    print("=" * 64)
+
+def admin_menu():
+    while True:
+        clear_screen()
+        print_header("Admin Menu.")
+
+        print("1. Download Menu & Perform integrity check.")
+        print("2. Upload End of day report & Perform integrity check.")
+        
+        instructions = "\nOnly accepts digits."
+        instructions += "\nEnter '0' to exit."
+        instructions += "\n\nOption -> "
+
+        try:
+            option = int(input(instructions).strip())
+
+            if option == 0: break
+            elif option == 1: download_menu_and_perform_integrity_check()
+            elif option == 2: upload_end_of_day_report_and_perform_integrity_check()
+
+        except ValueError:
+            print("\nOnly accepts digits.")
+            short_pause()
 
 connect_to_server = Connection("127.0.0.1", 4444)
 command_to_server = Command()
 client_data = Data()
 client_side_security = Security()
 
-client_side_security.encrypt_file(client_data.end_of_day_report_file, client_data.encrypted_end_of_day_report_file)
-upload_file(command_to_server.upload_end_of_day_report, client_data.encrypted_end_of_day_report_file)
+admin_menu()

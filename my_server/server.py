@@ -22,10 +22,9 @@ class Data:
         self.menu_file = getcwd() + "\\menu.txt"
         self.md5_of_menu_file = ""
 
-        self.end_of_day_report_base = getcwd() + "\\day_end"
-        self.md5_of_end_of_day_report_file = ""
+        self.end_of_day_report_base = getcwd() + "\\day_end_"
+        self.encrypted_end_of_day_report_file_base = getcwd() + "\\day_end_encrypted_"
 
-        self.encrypted_end_of_day_report_file_base = getcwd() + "\\day_end_encrypted"
         self.md5_of_encrypted_end_of_day_report_file = ""
 
 class Command:
@@ -37,6 +36,8 @@ class Command:
         self.download_server_public_key_file_hash = "download_server_public_key_file_hash"
 
         self.upload_end_of_day_report = "upload_end_of_day_report"
+
+        self.upload_encrypted_end_of_day_report_hash = "upload_encrypted_end_of_day_report_hash"
 
 class Security:
     def __init__(self):
@@ -159,23 +160,17 @@ def download_file(connection, destination_file):
 def process_connection(connection, ip_address):
     user_command = connection.recv(4096).decode()
 
-    if user_command == command_from_client.download_menu:
-        send_file(connection, server_data.menu_file)
-
-        print("<< Completed: [Sending] default menu. >>")
-        return
-
-    elif user_command == command_from_client.download_menu_hash:
+    if user_command == command_from_client.download_menu_hash:
         server_data.md5_of_menu_file = server_side_security.get_file_hash(server_data.menu_file)
         connection.sendall(server_data.md5_of_menu_file.encode())
 
         print("<< Completed: [Sending] default menu hash. >>")
         return
 
-    elif user_command == command_from_client.download_server_public_key_file:
-        send_file(connection, server_side_security.public_key_file)
+    elif user_command == command_from_client.download_menu:
+        send_file(connection, server_data.menu_file)
 
-        print("<< Completed: [Sending] public key file. >>")
+        print("<< Completed: [Sending] default menu. >>")
         return
 
     elif user_command == command_from_client.download_server_public_key_file_hash:
@@ -184,15 +179,46 @@ def process_connection(connection, ip_address):
 
         print("<< Completed: [Sending] public key file hash. >>")
         return
-    
+
+    elif user_command == command_from_client.download_server_public_key_file:
+        send_file(connection, server_side_security.public_key_file)
+
+        print("<< Completed: [Sending] public key file. >>")
+        return
+
+    elif user_command == command_from_client.upload_encrypted_end_of_day_report_hash:
+        end_of_day_encrypted_report_hash = connection.recv(4096).decode()
+        server_data.md5_of_encrypted_end_of_day_report_file = end_of_day_encrypted_report_hash
+
+        print(f"[O] (Downloaded) End of day encrypted report hash: {server_data.md5_of_encrypted_end_of_day_report_file}")
+        return
+
     elif user_command == command_from_client.upload_end_of_day_report:
         encrypted_end_of_day_report_filename = server_data.encrypted_end_of_day_report_file_base + ip_address + " - " + get_formatted_date_and_time() + ".bin"
         download_file(connection, encrypted_end_of_day_report_filename)
+
         print(f"[+] Saving encrypted end of day report as: {encrypted_end_of_day_report_filename}")
 
-        decrypted_filename = server_data.end_of_day_report_base + ip_address + " - " + get_formatted_date_and_time() + ".txt"
-        server_side_security.decrypt_file(encrypted_end_of_day_report_filename, decrypted_filename)
-        print(f"[+] Decrypting end of day report as: {decrypted_filename}")
+        try:
+            local_md5_of_encrypted_end_of_day_report_file = server_side_security.get_file_hash(encrypted_end_of_day_report_filename)
+            print(f"[O] (Local) Encrypted End of day report hash: {local_md5_of_encrypted_end_of_day_report_file}")
+
+            if local_md5_of_encrypted_end_of_day_report_file == server_data.md5_of_encrypted_end_of_day_report_file:
+                print("[+] Hash check for encrypted end of day report file: ok")
+
+                decrypted_filename = server_data.end_of_day_report_base + ip_address + " - " + get_formatted_date_and_time() + ".txt"
+                server_side_security.decrypt_file(encrypted_end_of_day_report_filename, decrypted_filename)
+                
+                print(f"[+] Decrypting end of day report as: {decrypted_filename}")
+
+            else:
+                print("[!] Hash check for encrypted end of day report file: failed")     
+
+        except Exception as error:
+            print(f"[!] Unable to decrypt: {encrypted_end_of_day_report_filename} , please check your public/private key pair.")
+            print(f"[!] Error: {error}")
+
+        return
 
 def client_thread(connection, ip_address, port):
     process_connection(connection, ip_address)
