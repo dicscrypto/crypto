@@ -234,16 +234,14 @@ def create_private_and_public_key_on_server_and_download_server_public_key():
 
         client_socket.sendall((command_to_server.create_private_and_public_key.encode()))
         print("(Create private and public key) Waiting for reply from Server...")
+
         server_reply = client_socket.recv(4096).decode()
 
         if server_reply == "ok": print("\nPrivate & Public key created on the Server side.")
         else: print("\nFailed creating Private & Public key on the Server side.")
 
         download_file(command_to_server.download_server_public_key_file, client_side_security.server_public_key_file)
-        print("\n(Download server public key) Waiting for reply from Server...")
-
-        if server_reply == "ok": print("\nSuccessfully download Server's public key.")
-        else: print("\nFailed to download Server's public key.")
+        print("\nDownloading server public key...")
 
         client_side_security.md5_of_server_public_key_file = download_hash(command_to_server.download_server_public_key_file_hash)
         local_md5_of_server_public_key_file = client_side_security.get_file_hash(client_side_security.server_public_key_file)
