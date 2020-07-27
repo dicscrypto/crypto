@@ -300,7 +300,7 @@ def process_connection(connection, ip_address):
         print(f"[!!] Removed {server_side_security.private_key_file}")
         short_pause()
 
-        sys.exit(0)
+        return "shutdown_server"
 
 def connection_handler(connection, ip_address, port):
     return_code = process_connection(connection, ip_address)
@@ -309,7 +309,7 @@ def connection_handler(connection, ip_address, port):
     connection_terminated_time = datetime.datetime.now().strftime("%H:%M:%S")            
     print(f"[-] Connection Terminated -> {connection_terminated_time} ({ip_address} : {port})")
 
-    if return_code == "restart server": return "restart_server"
+    if return_code != "": return return_code
     else: return
 
 def start_server():
@@ -345,8 +345,12 @@ def start_server():
 
                     if return_code == "restart_server": 
                         print("[!] Restart signal received. Server will now restart.")
+
                         short_pause()
                         break
+
+                    elif return_code == "shutdown_server":
+                        return return_code
 
                 except Exception as error:
                     print(f"[!] Error occured : {error}")
@@ -370,7 +374,10 @@ def initialise():
 
         decrypting_result = check_error_after_decryption(server_side_security.private_key_file)
 
-        if decrypting_result == "ok": start_server()
+        if decrypting_result == "ok": 
+            return_code = start_server()
+
+            if return_code == "shutdown_server": break
 
         else:
             print("\nWrong password.")
