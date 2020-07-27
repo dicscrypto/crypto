@@ -8,6 +8,8 @@ from os import getcwd, system, path
 
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Signature import PKCS1_v1_5
+from Crypto.Hash import MD5
 from Crypto import Random
 from base64 import b64encode, b64decode
 
@@ -22,7 +24,6 @@ class Data:
         self.md5_of_menu_file = ""
         self.end_of_day_report_file = getcwd() + "\\day_end.txt"
         self.encrypted_end_of_day_report_file = getcwd() + "\\day_end_encrypted.rsa"
-        self.md5_of_encrypted_end_of_day_report_file = ""
 
 class Command:
     def __init__(self):
@@ -31,30 +32,56 @@ class Command:
         self.download_server_public_key_file = "download_server_public_key_file"
         self.download_server_public_key_file_hash = "download_server_public_key_file_hash"
         self.upload_end_of_day_report = "upload_end_of_day_report"
-        self.upload_encrypted_end_of_day_report_hash = "upload_encrypted_end_of_day_report_hash"
+        self.upload_end_of_day_report_signature = "upload_end_of_day_report_signature"
+        self.upload_client_public_key_file = "upload_client_public_key_file"
         self.create_private_and_public_key = "create_private_and_public_key"
-        self.check_results_for_end_of_day_reports_upload = "check_results_for_end_of_day_reports_upload"
         self.remotely_encrypt_server_private_key_file = "remotely_encrypt_server_private_key_file"
         self.shutdown_server = "shutdown_server"
 
 class Security:
     def __init__(self):
+        self.private_key_file = getcwd() + "\\client_private.pem" 
+        self.private_key_file_encrypted = getcwd() + "\\client_private.aes"
+        self.public_key_file = getcwd() + "\\client_public.pem" 
+        self.md5_of_public_key_file = ""
+
         self.server_public_key_file = getcwd() + "\\server_public.pem"
         self.md5_of_server_public_key_file = ""
 
-    def encrypt(self, plaintext, public_key_file): # RSA encryption.
-        public_key = RSA.import_key(open(public_key_file).read())
+    def new_keys(self, key_size):
+        random_generator = Random.new().read
+        key = RSA.generate(key_size, random_generator)
 
+        private_key, public_key = key, key.publickey()
+        return private_key, public_key
+
+    def create_private_and_public_key(self):
+        private_key, public_key = self.new_keys(2048)
+
+        private_key = private_key.export_key()
+        public_key = public_key.export_key()
+
+        with open(self.private_key_file, 'wb') as private_key_file: 
+            private_key_file.write(private_key)
+
+        print(f"Done creating Private Key: {self.private_key_file}")
+
+        with open(self.public_key_file, 'wb') as public_key_file: 
+            public_key_file.write(public_key)
+
+        print(f"Done creating Public Key: {self.public_key_file}")
+
+    def rsa_encrypt(self, plaintext, public_key): # RSA encryption.
         cipher_rsa = PKCS1_OAEP.new(public_key)
         ciphertext = cipher_rsa.encrypt(plaintext)
 
         return ciphertext
 
-    def encrypt_file(self, file_to_be_encrypted, destination_file): # RSA encryption.
+    def rsa_encrypt_file(self, file_to_be_encrypted, destination_file, public_key): # RSA encryption.
         with open(file_to_be_encrypted, "rb") as file_to_encrypt:
             plaintext = file_to_encrypt.read()
 
-        ciphertext = self.encrypt(plaintext, self.server_public_key_file)
+        ciphertext = self.rsa_encrypt(plaintext, public_key)
         ciphertext = b64encode(ciphertext) # Encode binary to base64 encoded text.
 
         with open(destination_file, "wb") as dest_file:
@@ -76,6 +103,22 @@ class Security:
         
         else:
             print(f"[!] File not found: {target_file}")
+
+    def sign(self, message, private_key):
+        signer = PKCS1_v1_5.new(private_key)
+        
+        digest = MD5.new()
+        digest.update(message)
+        
+        return signer.sign(digest)
+
+    def verify(self, message, signature, public_key):
+        signer = PKCS1_v1_5.new(public_key)
+
+        digest = MD5.new()
+        digest.update(message)
+
+        return signer.verify(digest, signature)
 
 def upload_file(command_to_be_sent, file_to_be_uploaded):
     file_to_be_uploaded_exists = path.exists(file_to_be_uploaded)
@@ -104,36 +147,41 @@ def upload_data(command_to_be_sent, data_to_be_uploaded):
         short_pause()
         client_socket.send(data_to_be_uploaded.encode())
 
-def check_operation_results(command_to_be_sent):
+def upload_signature(command_to_be_sent, signature_to_be_uploaded):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
         client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
         client_socket.sendall((command_to_be_sent.encode()))
 
-        server_reply = client_socket.recv(4096)
-
-    return server_reply.decode()
+        short_pause()
+        client_socket.send(signature_to_be_uploaded)
 
 def upload_end_of_day_report_and_perform_integrity_check():
     clear_screen()
 
     try:
-        client_side_security.encrypt_file(client_data.end_of_day_report_file, client_data.encrypted_end_of_day_report_file)
+        upload_file(command_to_server.upload_client_public_key_file, client_side_security.public_key_file)
+        print(f"\nUploaded client's public key file: {client_side_security.public_key_file}")
 
+        download_file(command_to_server.download_server_public_key_file, client_side_security.server_public_key_file)
+        print(f"\nDownloaded server's public key file: {client_side_security.server_public_key_file}")
+
+        server_public_key = RSA.import_key(open(client_side_security.server_public_key_file).read())
+        client_side_security.rsa_encrypt_file(client_data.end_of_day_report_file, client_data.encrypted_end_of_day_report_file, server_public_key)
         print(f"\nSuccessfully encrypted: {client_data.end_of_day_report_file}")
-        client_data.md5_of_encrypted_end_of_day_report_file = client_side_security.get_file_hash(client_data.encrypted_end_of_day_report_file)
 
-        print(f"\nMD5 Hash of encrypted end of day report file: {client_data.md5_of_encrypted_end_of_day_report_file}")
-        upload_data(command_to_server.upload_encrypted_end_of_day_report_hash, client_data.md5_of_encrypted_end_of_day_report_file)
+        long_pause()
 
-        short_pause()
+        data = open(client_data.encrypted_end_of_day_report_file, "rb").read()
+        client_private_key = RSA.import_key(open(client_side_security.private_key_file).read())
+        end_of_day_report_signature = b64encode(client_side_security.sign(data, client_private_key))
+
+        print(f"\nData signed with private key: {end_of_day_report_signature.decode()}")
+
+        upload_signature(command_to_server.upload_end_of_day_report_signature, end_of_day_report_signature)
+        print("\nSuccessfully uploaded signature.")
+
         upload_file(command_to_server.upload_end_of_day_report, client_data.encrypted_end_of_day_report_file)
         print(f"\nSuccessfully uploaded: {client_data.encrypted_end_of_day_report_file}")
-
-        short_pause()
-        upload_operation_result = check_operation_results(command_to_server.check_results_for_end_of_day_reports_upload)
-
-        if upload_operation_result == "ok": print("\nUpload successful")
-        else: print("\nThere is something wrong with the uploading process or decryption of the report is unsuccessful.")
 
         pause()
 
@@ -263,6 +311,9 @@ def pause():
 def short_pause():
     time.sleep(1.5)
 
+def long_pause():
+    time.sleep(3)
+
 def clear_screen():
     system("cls")
 
@@ -276,10 +327,11 @@ def admin_menu():
         clear_screen()
         print_header("Admin Menu")
 
-        print("1. Create Private & Public Key on Server and Download Server's Public Key.")
-        print("2. Download Menu & Perform Hash check.")
-        print("3. Upload End of day report & Perform Hash check.")
-        print("4. Shutdown Server.")
+        print("1. Create Key pair on Server.")
+        print("2. Create Key pair on Client.")
+        print("3. Download Menu.")
+        print("4. Upload End of day report.")
+        print("5. Shutdown Server.")
         
         instructions = "\nOnly accepts digits."
         instructions += "\nEnter '0' to exit."
@@ -290,9 +342,15 @@ def admin_menu():
 
             if option == 0: break
             elif option == 1: create_private_and_public_key_on_server_and_download_server_public_key()
-            elif option == 2: download_menu_and_perform_integrity_check()
-            elif option == 3: upload_end_of_day_report_and_perform_integrity_check()
-            elif option == 4: shutdown_server()
+            
+            elif option == 2: 
+                clear_screen()
+                client_side_security.create_private_and_public_key()
+                pause()
+
+            elif option == 3: download_menu_and_perform_integrity_check()
+            elif option == 4: upload_end_of_day_report_and_perform_integrity_check()
+            elif option == 5: shutdown_server()
 
         except ValueError:
             print("\nOnly accepts digits.")

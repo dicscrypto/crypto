@@ -12,6 +12,9 @@ from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto import Random
 from Crypto.Cipher import AES
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Signature import PKCS1_v1_5
+from Crypto.Hash import MD5
 from base64 import b64encode, b64decode
 
 class Connection:
@@ -25,8 +28,7 @@ class Data:
         self.md5_of_menu_file = "" 
         self.end_of_day_report_base = getcwd() + "\\day_end_" 
         self.encrypted_end_of_day_report_file_base = getcwd() + "\\day_end_encrypted_" 
-        self.md5_of_encrypted_end_of_day_report_file = ""
-        self.end_of_day_report_upload_results = ""
+        self.encrypted_end_of_day_report_signature = ""
 
 class Command:
     def __init__(self):
@@ -36,9 +38,9 @@ class Command:
         self.download_server_public_key_file = "download_server_public_key_file"
         self.download_server_public_key_file_hash = "download_server_public_key_file_hash"
         self.upload_end_of_day_report = "upload_end_of_day_report"
-        self.upload_encrypted_end_of_day_report_hash = "upload_encrypted_end_of_day_report_hash"
+        self.upload_client_public_key_file = "upload_client_public_key_file"
+        self.upload_end_of_day_report_signature = "upload_end_of_day_report_signature"
         self.create_private_and_public_key = "create_private_and_public_key"
-        self.check_results_for_end_of_day_reports_upload = "check_results_for_end_of_day_reports_upload"
         self.remotely_encrypt_server_private_key_file = "remotely_encrypt_server_private_key_file"
         self.shutdown_server = "shutdown_server"
 
@@ -47,6 +49,7 @@ class Security:
         self.private_key_file = getcwd() + "\\server_private.pem" 
         self.private_key_file_encrypted = getcwd() + "\\server_private.aes"
         self.public_key_file = getcwd() + "\\server_public.pem" 
+        self.client_public_key_file = getcwd() + "\\client_public.pem"
         self.md5_of_public_key_file = ""
 
     def new_keys(self, key_size):
@@ -110,20 +113,18 @@ class Security:
         with open(destination_file, "wb") as dest_file: 
             dest_file.write(plaintext)
 
-    def decrypt(self, ciphertext): # RSA decryption.
-        private_key = RSA.import_key(open(self.private_key_file).read())
-
+    def rsa_decrypt(self, ciphertext, private_key): # RSA decryption.
         cipher_rsa = PKCS1_OAEP.new(private_key)
         plaintext = cipher_rsa.decrypt(ciphertext)
 
         return plaintext.decode()
 
-    def decrypt_file(self, file_to_be_decrypted, destination_file): # RSA decryption.
+    def rsa_decrypt_file(self, file_to_be_decrypted, destination_file, private_key): # RSA decryption.
         with open(file_to_be_decrypted, "rb") as file_to_decrypt:
             ciphertext = file_to_decrypt.read()
 
         ciphertext = b64decode(ciphertext) 
-        plaintext = self.decrypt(ciphertext) 
+        plaintext = self.rsa_decrypt(ciphertext, private_key) 
 
         with open(destination_file, "w") as dest_file: 
             dest_file.write(plaintext)
@@ -160,6 +161,15 @@ class Security:
         
         else:
             print(f"[!] File not found: {target_file}")
+
+    def verify(self, message, signature, public_key):
+        signer = PKCS1_v1_5.new(public_key)
+
+        digest = MD5.new()
+        digest.update(message)
+
+        signature = b64decode(signature)
+        return signer.verify(digest, signature)
 
 def pause():
     print()
@@ -232,12 +242,10 @@ def process_connection(connection, ip_address):
         print("<< Completed: [Sending] public key file. >>")
         return
 
-    elif user_command == command_from_client.upload_encrypted_end_of_day_report_hash:
-        end_of_day_encrypted_report_hash = connection.recv(4096).decode()
-        server_data.md5_of_encrypted_end_of_day_report_file = end_of_day_encrypted_report_hash
+    elif user_command == command_from_client.upload_client_public_key_file:
+        download_file(connection, server_side_security.client_public_key_file)
 
-        print(f"[O] (Downloaded) End of day encrypted report hash: {server_data.md5_of_encrypted_end_of_day_report_file}")
-        return
+        print(f"[+] Saving client's public key file as: {server_side_security.client_public_key_file}")
 
     elif user_command == command_from_client.upload_end_of_day_report:
         encrypted_end_of_day_report_filename = server_data.encrypted_end_of_day_report_file_base + ip_address + " - " + get_formatted_date_and_time() + ".rsa"
@@ -245,35 +253,35 @@ def process_connection(connection, ip_address):
 
         print(f"[+] Saving encrypted end of day report as: {encrypted_end_of_day_report_filename}")
 
-        try:
-            local_md5_of_encrypted_end_of_day_report_file = server_side_security.get_file_hash(encrypted_end_of_day_report_filename)
-            print(f"[O] (Local) Encrypted End of day report hash: {local_md5_of_encrypted_end_of_day_report_file}")
+        try:        
+            decrypted_filename = server_data.end_of_day_report_base + ip_address + " - " + get_formatted_date_and_time() + ".txt"
 
-            if local_md5_of_encrypted_end_of_day_report_file == server_data.md5_of_encrypted_end_of_day_report_file:
-                print("[+] Hash check for encrypted end of day report file: ok")
+            private_key = RSA.import_key(open(server_side_security.private_key_file).read())
+            server_side_security.rsa_decrypt_file(encrypted_end_of_day_report_filename, decrypted_filename, private_key)
+            
+            print(f"[+] Decrypted end of day report as: {decrypted_filename}") 
 
-                decrypted_filename = server_data.end_of_day_report_base + ip_address + " - " + get_formatted_date_and_time() + ".txt"
-                server_side_security.decrypt_file(encrypted_end_of_day_report_filename, decrypted_filename)
-                
-                server_data.end_of_day_report_upload_results = "ok"
-                print(f"[+] Decrypting end of day report as: {decrypted_filename}")
+            data = open(encrypted_end_of_day_report_filename, "rb").read()
+            client_public_key = RSA.import_key(open(server_side_security.client_public_key_file).read())
+            verification_result = server_side_security.verify(data, server_data.encrypted_end_of_day_report_signature, client_public_key)
+            
+            print(f"[++] Verification results: {verification_result}")
 
+            if verification_result == True:
+                print("[++] Successfully verified that data is indeed from client and integrity is intact.")
             else:
-                server_data.end_of_day_report_upload_results = "not ok"
-                print("[!] Hash check for encrypted end of day report file: failed")     
+                print("[--] Unable to verify that data is from client and integrity of data is not intact.")
 
         except Exception as error:
-            server_data.end_of_day_report_upload_results = "not ok"
-
-            print(f"[~] Unable to decrypt: {encrypted_end_of_day_report_filename} , please check your public/private key pair.")
-            print(f"[~] Error: {error}")
+            print(f"[!!] Error: {error}")
 
         return
 
-    elif user_command == command_from_client.check_results_for_end_of_day_reports_upload:
-        connection.sendall(server_data.end_of_day_report_upload_results.encode())
+    elif user_command == command_from_client.upload_end_of_day_report_signature:
+        end_of_day_report_signature = connection.recv(4096).decode()
+        server_data.encrypted_end_of_day_report_signature = end_of_day_report_signature
 
-        print("<< Completed: [Sending] end of day reports upload result. >>")
+        print(f"[+] Received end of day report signature: {end_of_day_report_signature}")
         return
 
     elif user_command == command_from_client.create_private_and_public_key:
