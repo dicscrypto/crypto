@@ -3,15 +3,17 @@ import sys
 import socket
 import time
 import hashlib
+import re
 
-from os import getcwd, system, path
+from os import getcwd, system, path, remove
+from base64 import b64encode, b64decode
 
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Signature import PKCS1_v1_5
-from Crypto.Hash import MD5
 from Crypto import Random
-from base64 import b64encode, b64decode
+from Crypto.Cipher import AES
+from Crypto.Hash import MD5
 
 class Connection:
     def __init__(self, ip_address, port):
@@ -21,9 +23,10 @@ class Connection:
 class Data:
     def __init__(self):
         self.menu_file = getcwd() + "\\menu.txt"
-        self.md5_of_menu_file = ""
         self.end_of_day_report_file = getcwd() + "\\day_end.txt"
         self.encrypted_end_of_day_report_file = getcwd() + "\\day_end_encrypted.rsa"
+
+        self.md5_of_menu_file = ""
 
 class Command:
     def __init__(self):
@@ -31,9 +34,11 @@ class Command:
         self.download_menu_hash = "download_menu_hash"
         self.download_server_public_key_file = "download_server_public_key_file"
         self.download_server_public_key_file_hash = "download_server_public_key_file_hash"
+
         self.upload_end_of_day_report = "upload_end_of_day_report"
         self.upload_end_of_day_report_signature = "upload_end_of_day_report_signature"
         self.upload_client_public_key_file = "upload_client_public_key_file"
+
         self.create_private_and_public_key = "create_private_and_public_key"
         self.remotely_encrypt_server_private_key_file = "remotely_encrypt_server_private_key_file"
         self.shutdown_server = "shutdown_server"
@@ -43,9 +48,9 @@ class Security:
         self.private_key_file = getcwd() + "\\client_private.pem" 
         self.private_key_file_encrypted = getcwd() + "\\client_private.aes"
         self.public_key_file = getcwd() + "\\client_public.pem" 
-        self.md5_of_public_key_file = ""
-
         self.server_public_key_file = getcwd() + "\\server_public.pem"
+
+        self.md5_of_public_key_file = ""
         self.md5_of_server_public_key_file = ""
 
     def new_keys(self, key_size):
@@ -64,12 +69,66 @@ class Security:
         with open(self.private_key_file, 'wb') as private_key_file: 
             private_key_file.write(private_key)
 
-        print(f"Done creating Private Key: {self.private_key_file}")
+        print(f"** Done creating Private Key: {self.private_key_file}")
 
         with open(self.public_key_file, 'wb') as public_key_file: 
             public_key_file.write(public_key)
 
-        print(f"Done creating Public Key: {self.public_key_file}")
+        print(f"** Done creating Public Key: {self.public_key_file}")
+
+    def pad(self, plaintext):
+        # AES.block_size = 16
+        padding_length = AES.block_size - len(plaintext) % AES.block_size   
+        padded_plaintext = plaintext + b"\0" * padding_length # b"\0" : NULL
+
+        return padded_plaintext
+
+    def aes_encrypt(self, plaintext, password):
+        private_key = hashlib.sha256(password.encode()).digest() # For local use.
+        #private_key = password  # For remote use.
+        padded_plaintext = self.pad(plaintext)
+        iv = Random.new().read(AES.block_size)
+
+        cipher_aes = AES.new(private_key, AES.MODE_CBC, iv)
+        ciphertext = b64encode(iv + cipher_aes.encrypt(padded_plaintext))
+
+        return ciphertext  
+
+    def aes_encrypt_file(self, password, file_to_be_encrypted, destination_file):
+        with open(file_to_be_encrypted, "rb") as file_to_encrypt: 
+            plaintext =  file_to_encrypt.read()
+
+        ciphertext = self.aes_encrypt(plaintext, password) 
+
+        with open(destination_file, "wb") as dest_file: 
+            dest_file.write(ciphertext)
+
+        print(f"\n** Encrypted \"{file_to_be_encrypted}\" TO \"{destination_file}\" ")
+
+        remove(file_to_be_encrypted) # Remove the original plaintext file from disk.
+
+        print(f"\n** Removed original file \"{file_to_be_encrypted}\"")
+
+    def aes_decrypt(self, ciphertext, password):
+        private_key = hashlib.sha256(password.encode()).digest()
+        ciphertext = b64decode(ciphertext) # Decode to binary.
+        iv = ciphertext[:16] # First 16 bytes.
+        
+        cipher_aes = AES.new(private_key, AES.MODE_CBC, iv)
+
+        plaintext = cipher_aes.decrypt(ciphertext[16:]) # After 16 bytes.
+        plaintext = plaintext.rstrip(b"\0") # Strips paddings/NULL.
+
+        return plaintext
+
+    def aes_decrypt_file(self, password, file_to_be_decrypted, destination_file):
+        with open(file_to_be_decrypted, "rb") as file_to_decrypt:
+            ciphertext = file_to_decrypt.read() 
+        
+        plaintext = self.aes_decrypt(ciphertext, password) 
+
+        with open(destination_file, "wb") as dest_file: 
+            dest_file.write(plaintext)
 
     def rsa_encrypt(self, plaintext, public_key): # RSA encryption.
         cipher_rsa = PKCS1_OAEP.new(public_key)
@@ -119,6 +178,31 @@ class Security:
         digest.update(message)
 
         return signer.verify(digest, signature)
+
+    def password_check(self, new_password):
+        lower_regex = re.compile(r'[a-z]+')
+        upper_regex = re.compile(r'[A-Z]+')
+        digit_regex = re.compile(r'[0-9]+')
+        special_char_regex = re.compile(r'\W+')
+
+        error = ''
+
+        if len(new_password) < 8:
+            error += "\nPassword must contain at least 8 characters."
+
+        if lower_regex.findall(new_password) == []:
+            error += "\nPassword must contain at least one lowercase character."
+
+        if upper_regex.findall(new_password) == []:
+            error += "\nPassword must contain at least one uppercase character." 
+
+        if digit_regex.findall(new_password) == []:
+            error += "\nPassword must contain at least one digit."
+
+        if special_char_regex.findall(new_password) == []:
+            error += "\nPassword must contain at least one special character."
+
+        return error
 
 def upload_file(command_to_be_sent, file_to_be_uploaded):
     file_to_be_uploaded_exists = path.exists(file_to_be_uploaded)
@@ -228,37 +312,6 @@ def download_menu_and_perform_integrity_check():
         print(f"Encountered error while performing operation: {error}")
         sys.exit(1)
 
-def remotely_encrypt_server_private_key_file():
-    while True:
-        clear_screen()
-
-        password = input("Enter the password used to encrypted server's private key file -> ").strip()
-        repeat_password = input("Enter the password again that is used to encrypt server's private key file -> ").strip()
-
-        if repeat_password == password:
-            password = hashlib.sha256(password.encode()).digest()
-
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-                client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
-                client_socket.sendall((command_to_server.remotely_encrypt_server_private_key_file.encode()))
-
-                short_pause()
-
-                client_socket.send(password)
-
-                short_pause()
-
-                server_reply = client_socket.recv(4096).decode()
-
-                if server_reply == "private key encryption ok":
-                    print("\nSuccessfully encrypted server's private key file.")
-                    print("Server will now terminate. Please relaunch client after starting up server.")
-                    sys.exit(0)
-
-        else: 
-            print("\nPlease ensure that both passwords matches.")
-            short_pause()
-
 def create_private_and_public_key_on_server_and_download_server_public_key():
     clear_screen()
 
@@ -266,27 +319,28 @@ def create_private_and_public_key_on_server_and_download_server_public_key():
         client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
 
         client_socket.sendall((command_to_server.create_private_and_public_key.encode()))
-        print("(Create private and public key) Waiting for reply from Server...")
+        print("** Remotely creating private and public key.")
+        print("** Waiting for reply from Server.")
 
         server_reply = client_socket.recv(4096).decode()
 
         if server_reply == "ok": 
-            print("\nPrivate & Public key created on the Server side.")
+            print("\n** Private & Public key created on the Server side.")
 
             download_file(command_to_server.download_server_public_key_file, client_side_security.server_public_key_file)
-            print("\nDownloading server public key...")
+            print("\n** Downloading server public key.")
 
             client_side_security.md5_of_server_public_key_file = download_hash(command_to_server.download_server_public_key_file_hash)
             local_md5_of_server_public_key_file = client_side_security.get_file_hash(client_side_security.server_public_key_file)
             
-            print("\nPerforming hash check on downloaded server public key file.\n")
-            print(f"Local MD5 of Server's public keyfile: {local_md5_of_server_public_key_file}")
-            print(f"Downloaded MD5 of Server's public keyfile: {client_side_security.md5_of_server_public_key_file}")
+            print("\n** Performing hash check on downloaded server public key file.\n")
+            print(f"** Local MD5 of Server's public keyfile: {local_md5_of_server_public_key_file}")
+            print(f"** Downloaded MD5 of Server's public keyfile: {client_side_security.md5_of_server_public_key_file}")
 
             if local_md5_of_server_public_key_file == client_side_security.md5_of_server_public_key_file: 
-                print("\nHash check passed.")
+                print("\n** Hash check passed.")
             else: 
-                print("\nHash check failed.")
+                print("\n!! Hash check failed.")
             
             remotely_encrypt_server_private_key_file()
 
@@ -300,8 +354,10 @@ def shutdown_server():
         client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
         client_socket.send(command_to_server.shutdown_server.encode())
 
-    print("\nShutting down server. Exiting client.")
-    short_pause()
+    print("\n** Shutting server down.")
+    print("** Performing logout now.")
+
+    logout()
     sys.exit(0)
 
 def pause():
@@ -322,6 +378,87 @@ def print_header(header_message):
     print(header_message)
     print("=" * 64)
 
+def remotely_encrypt_server_private_key_file():
+    while True:
+        clear_screen()
+
+        password = input("Enter the password used to encrypted server's private key file -> ").strip()
+        error = client_side_security.password_check(password)
+
+        if error == "":
+            repeat_password = input("Enter the password again that is used to encrypt server's private key file -> ").strip()
+
+            if repeat_password == password:
+                password = hashlib.sha256(password.encode()).digest()
+
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+                    client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
+                    client_socket.sendall((command_to_server.remotely_encrypt_server_private_key_file.encode()))
+
+                    short_pause()
+
+                    client_socket.send(password)
+
+                    short_pause()
+
+                    server_reply = client_socket.recv(4096).decode()
+
+                    if server_reply == "private key encryption ok":
+                        print("\nSuccessfully encrypted server's private key file.")
+                        print("Server will now terminate. Please relaunch client after starting up server.")
+                        sys.exit(0)
+
+            else: 
+                print("\nPlease ensure that both passwords matched.")
+                short_pause()
+
+        else:
+            print(error)
+            pause()
+
+def locally_encrypt_client_private_key_file():
+    while True:
+        clear_screen()
+        print_header("Create password for client's private key file.")
+
+        instructions = "Password requirements:"
+        instructions += "\n\nMin 8 characters in length."
+        instructions += "\n1 uppercase, 1 lowercase, 1 digit, 1 special char.\n"
+
+        print(instructions)
+
+        password = input("Please enter password -> ").strip()
+
+        error = client_side_security.password_check(password)
+
+        if error == "":
+            repeat_password = input("Please re-enter password again -> ").strip()
+
+            if repeat_password == password:
+                client_side_security.aes_encrypt_file(password, client_side_security.private_key_file, client_side_security.private_key_file_encrypted)
+                pause()
+                return "break"
+            
+            else:
+                print("\nPlease ensure that both passwords matched.")
+                short_pause()
+
+        else:
+            print(error)
+            pause()
+
+def check_error_after_decryption(destination_file):
+    with open(destination_file, "rb") as dest_file:
+        data = dest_file.read()
+
+    if b"-----BEGIN RSA PRIVATE KEY-----" in data: return "ok" # If this string is present, most likely decryption is successful.
+    else: return "failed"
+
+def logout():
+    remove(client_side_security.private_key_file)
+    print(f"\n** Removed -> {client_side_security.private_key_file}")
+    short_pause()
+
 def admin_menu():
     while True:
         clear_screen()
@@ -340,14 +477,20 @@ def admin_menu():
         try:
             option = int(input(instructions).strip())
 
-            if option == 0: break
-            elif option == 1: create_private_and_public_key_on_server_and_download_server_public_key()
+            if option == 0: 
+                remove(client_side_security.private_key_file)
+                break
             
+            elif option == 1: 
+                create_private_and_public_key_on_server_and_download_server_public_key()
+
             elif option == 2: 
                 clear_screen()
                 client_side_security.create_private_and_public_key()
-                pause()
-
+                
+                return_code = locally_encrypt_client_private_key_file()
+                if return_code == "break": logout()
+                
             elif option == 3: download_menu_and_perform_integrity_check()
             elif option == 4: upload_end_of_day_report_and_perform_integrity_check()
             elif option == 5: shutdown_server()
@@ -356,9 +499,24 @@ def admin_menu():
             print("\nOnly accepts digits.")
             short_pause()
 
+def initialise():
+    while True:
+        clear_screen()
+        print_header("Client Login Screen")
+
+        password = input("** Input password to decrypt private key file -> ").strip()
+        client_side_security.aes_decrypt_file(password, client_side_security.private_key_file_encrypted, client_side_security.private_key_file)
+
+        decrypting_result = check_error_after_decryption(client_side_security.private_key_file)
+
+        if decrypting_result == "ok": admin_menu()
+        else: 
+            print("\nWrong password.")
+            short_pause()
+
 connect_to_server = Connection("127.0.0.1", 4444)
 command_to_server = Command()
 client_data = Data()
 client_side_security = Security()
 
-admin_menu()
+initialise()
