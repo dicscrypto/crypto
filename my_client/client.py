@@ -258,7 +258,6 @@ def upload_end_of_day_report_and_perform_integrity_check():
         data = open(client_data.encrypted_end_of_day_report_file, "rb").read()
         client_private_key = RSA.import_key(open(client_side_security.private_key_file).read())
         end_of_day_report_signature = b64encode(client_side_security.sign(data, client_private_key))
-
         print(f"\nData signed with private key: {end_of_day_report_signature.decode()}")
 
         upload_signature(command_to_server.upload_end_of_day_report_signature, end_of_day_report_signature)

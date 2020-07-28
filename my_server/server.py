@@ -254,23 +254,27 @@ def process_connection(connection, ip_address):
         print(f"[+] Saving encrypted end of day report as: {encrypted_end_of_day_report_filename}")
 
         try:        
-            decrypted_filename = server_data.end_of_day_report_base + ip_address + " - " + get_formatted_date_and_time() + ".txt"
-
-            private_key = RSA.import_key(open(server_side_security.private_key_file).read())
-            server_side_security.rsa_decrypt_file(encrypted_end_of_day_report_filename, decrypted_filename, private_key)
-            
-            print(f"[+] Decrypted end of day report as: {decrypted_filename}") 
-
             data = open(encrypted_end_of_day_report_filename, "rb").read()
             client_public_key = RSA.import_key(open(server_side_security.client_public_key_file).read())
             verification_result = server_side_security.verify(data, server_data.encrypted_end_of_day_report_signature, client_public_key)
             
-            print(f"[I] Verification results: {verification_result}")
+            print(f"[I] Signature verification results: {verification_result}")
 
             if verification_result == True:
                 print("[I] Successfully verified that data is indeed from client and integrity is intact.")
+
+                decrypted_filename = server_data.end_of_day_report_base + ip_address + " - " + get_formatted_date_and_time() + ".txt"
+
+                private_key = RSA.import_key(open(server_side_security.private_key_file).read())
+                server_side_security.rsa_decrypt_file(encrypted_end_of_day_report_filename, decrypted_filename, private_key)
+                
+                print(f"[+] Decrypted end of day report as: {decrypted_filename}") 
+
             else:
                 print("[!] Unable to verify that data is from client and integrity of data is not intact.")
+
+                remove(encrypted_end_of_day_report_filename)
+                print(f"[!] Removed tampered data: {encrypted_end_of_day_report_filename}")
 
         except Exception as error:
             print(f"[!] Error: {error}")
