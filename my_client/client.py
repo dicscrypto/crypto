@@ -42,6 +42,7 @@ class Command:
         self.create_private_and_public_key = "create_private_and_public_key"
         self.remotely_encrypt_server_private_key_file = "remotely_encrypt_server_private_key_file"
         self.shutdown_server = "shutdown_server"
+        self.user_login = "user_login"
 
 class Security:
     def __init__(self):
@@ -145,6 +146,22 @@ class Security:
 
         with open(destination_file, "wb") as dest_file:
             dest_file.write(ciphertext)
+
+    def rsa_decrypt(self, ciphertext, private_key): # RSA decryption.
+        cipher_rsa = PKCS1_OAEP.new(private_key)
+        plaintext = cipher_rsa.decrypt(ciphertext)
+
+        return plaintext.decode()
+
+    def rsa_decrypt_file(self, file_to_be_decrypted, destination_file, private_key): # RSA decryption.
+        with open(file_to_be_decrypted, "rb") as file_to_decrypt:
+            ciphertext = file_to_decrypt.read()
+
+        ciphertext = b64decode(ciphertext) 
+        plaintext = self.rsa_decrypt(ciphertext, private_key) 
+
+        with open(destination_file, "w") as dest_file: 
+            dest_file.write(plaintext)
 
     def get_file_hash(self, target_file):
         target_file_exist = path.exists(target_file)
@@ -311,6 +328,25 @@ def download_menu_and_perform_integrity_check():
         print(f"Encountered error while performing operation: {error}")
         sys.exit(1)
 
+def download_server_public_key():
+    download_file(command_to_server.download_server_public_key_file, client_side_security.server_public_key_file)
+    print("\n** Downloading server public key.")
+
+    client_side_security.md5_of_server_public_key_file = download_hash(command_to_server.download_server_public_key_file_hash)
+    local_md5_of_server_public_key_file = client_side_security.get_file_hash(client_side_security.server_public_key_file)
+    
+    print("\n** Performing hash check on downloaded server public key file.\n")
+    print(f"** Local MD5 of Server's public keyfile: {local_md5_of_server_public_key_file}")
+    print(f"** Downloaded MD5 of Server's public keyfile: {client_side_security.md5_of_server_public_key_file}")
+
+    if local_md5_of_server_public_key_file == client_side_security.md5_of_server_public_key_file: 
+        print("\n** Hash check passed.")
+        return "pass"
+
+    else: 
+        print("\n[!] Hash check failed.")
+        return "fail"
+
 def create_private_and_public_key_on_server_and_download_server_public_key():
     clear_screen()
 
@@ -325,23 +361,13 @@ def create_private_and_public_key_on_server_and_download_server_public_key():
 
         if server_reply == "ok": 
             print("\n** Private & Public key created on the Server side.")
-
-            download_file(command_to_server.download_server_public_key_file, client_side_security.server_public_key_file)
-            print("\n** Downloading server public key.")
-
-            client_side_security.md5_of_server_public_key_file = download_hash(command_to_server.download_server_public_key_file_hash)
-            local_md5_of_server_public_key_file = client_side_security.get_file_hash(client_side_security.server_public_key_file)
             
-            print("\n** Performing hash check on downloaded server public key file.\n")
-            print(f"** Local MD5 of Server's public keyfile: {local_md5_of_server_public_key_file}")
-            print(f"** Downloaded MD5 of Server's public keyfile: {client_side_security.md5_of_server_public_key_file}")
+            return_code = download_server_public_key()
 
-            if local_md5_of_server_public_key_file == client_side_security.md5_of_server_public_key_file: 
-                print("\n** Hash check passed.")
-            else: 
-                print("\n!! Hash check failed.")
-            
-            remotely_encrypt_server_private_key_file()
+            if return_code == "pass": remotely_encrypt_server_private_key_file()
+            else:
+                print("[!] Server public key file is corrupted.")
+                pause()
 
         else: 
             print("\nFailed creating Private & Public key on the Server side.")
@@ -478,7 +504,7 @@ def admin_menu():
 
             if option == 0: 
                 remove(client_side_security.private_key_file)
-                break
+                return "break"
             
             elif option == 1: 
                 create_private_and_public_key_on_server_and_download_server_public_key()
@@ -499,19 +525,72 @@ def admin_menu():
             short_pause()
 
 def initialise():
+    clear_screen()
+    return_code = download_server_public_key()
+
+    if return_code == "pass":
+        upload_file(command_to_server.upload_client_public_key_file, client_side_security.public_key_file)
+        print("\n** Uploading client's public key file to the server.")
+        pause()
+
+        while True:
+            clear_screen()
+            print_header("Client - Decrypt private key file")
+
+            password = input("** Input password to decrypt private key file -> ").strip()
+            client_side_security.aes_decrypt_file(password, client_side_security.private_key_file_encrypted, client_side_security.private_key_file)
+
+            decrypting_result = check_error_after_decryption(client_side_security.private_key_file)
+
+            #if decrypting_result == "ok": admin_menu()
+            if decrypting_result == "ok": login()
+            else: 
+                print("\nWrong password.")
+                short_pause()
+
+    else:
+        print("[!] Server public key file is corrupted.")
+        pause()
+
+def login():
     while True:
         clear_screen()
-        print_header("Client Login Screen")
+        print_header("Login")
 
-        password = input("** Input password to decrypt private key file -> ").strip()
-        client_side_security.aes_decrypt_file(password, client_side_security.private_key_file_encrypted, client_side_security.private_key_file)
+        username = input("** Username -> ").lower().strip()
+        password = input("** Password -> ").strip()
 
-        decrypting_result = check_error_after_decryption(client_side_security.private_key_file)
+        # To get its hash equivalent. If password is correct, hash will match.
+        hashed_password = hashlib.md5(password.encode()).hexdigest() 
 
-        if decrypting_result == "ok": admin_menu()
-        else: 
-            print("\nWrong password.")
+        username_and_password = tuple()
+        username_and_password = (username, hashed_password)
+        username_and_password = str(username_and_password).encode()
+
+        server_public_key = RSA.import_key(open(client_side_security.server_public_key_file).read())
+        username_and_password_ciphertext = b64encode(client_side_security.rsa_encrypt(username_and_password, server_public_key))
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
+            client_socket.sendall((command_to_server.user_login.encode()))
+
             short_pause()
+            client_socket.send(username_and_password_ciphertext)
+            print(f"\n** Sending encrypted username and password to server:\n{username_and_password_ciphertext.decode()}")
+            print("\n** Waiting for a reply from the server.")
+
+            authentication_reply_encrypted = client_socket.recv(4096).decode()
+            print(f"\n** Authentication reply from server:\n{authentication_reply_encrypted}")
+            authentication_reply_encrypted = b64decode(authentication_reply_encrypted)
+
+            client_private_key = RSA.import_key(open(client_side_security.private_key_file).read())
+            authentication_reply = client_side_security.rsa_decrypt(authentication_reply_encrypted, client_private_key)
+            print(f"\n** Decrypting authentication reply:\n{authentication_reply}")
+
+        pause()
+        if authentication_reply == "yes": 
+            return_code = admin_menu()
+            if return_code == "break": break
 
 connect_to_server = Connection("127.0.0.1", 4444)
 command_to_server = Command()

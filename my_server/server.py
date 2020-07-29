@@ -4,6 +4,7 @@ import socket
 import time
 import hashlib
 import traceback
+import sqlite3
 
 from os import getcwd, system, path, remove
 from base64 import b64encode, b64decode
@@ -22,7 +23,8 @@ class Connection:
 
 class Data:
     def __init__(self):
-        self.menu_file = getcwd() + "\\menu.txt" 
+        self.menu_file = getcwd() + "\\menu.txt"
+        self.login_file = getcwd() + "\\creds.db" 
         self.end_of_day_report_base = getcwd() + "\\day_end_" 
         self.encrypted_end_of_day_report_file_base = getcwd() + "\\day_end_encrypted_" 
 
@@ -44,6 +46,7 @@ class Command:
         self.create_private_and_public_key = "create_private_and_public_key"
         self.remotely_encrypt_server_private_key_file = "remotely_encrypt_server_private_key_file"
         self.shutdown_server = "shutdown_server"
+        self.user_login = "user_login"
 
 class Security:
     def __init__(self):
@@ -129,7 +132,23 @@ class Security:
         plaintext = self.aes_decrypt(ciphertext, password) 
 
         with open(destination_file, "wb") as dest_file: 
-            dest_file.write(plaintext)
+            dest_file.write(plaintext)  
+    
+    def rsa_encrypt(self, plaintext, public_key): # RSA encryption.
+        cipher_rsa = PKCS1_OAEP.new(public_key)
+        ciphertext = cipher_rsa.encrypt(plaintext)
+
+        return ciphertext
+
+    def rsa_encrypt_file(self, file_to_be_encrypted, destination_file, public_key): # RSA encryption.
+        with open(file_to_be_encrypted, "rb") as file_to_encrypt:
+            plaintext = file_to_encrypt.read()
+
+        ciphertext = self.rsa_encrypt(plaintext, public_key)
+        ciphertext = b64encode(ciphertext) # Encode binary to base64 encoded text.
+
+        with open(destination_file, "wb") as dest_file:
+            dest_file.write(ciphertext)
 
     def rsa_decrypt(self, ciphertext, private_key): # RSA decryption.
         cipher_rsa = PKCS1_OAEP.new(private_key)
@@ -212,6 +231,36 @@ def get_formatted_date_and_time():
     formatted_date_and_time = now.strftime("%Y-%m-%d_%H%M")
 
     return(formatted_date_and_time)
+
+def authenticate_user(username, password):
+    login_file_exists = path.exists(server_data.login_file)
+
+    if login_file_exists:
+        try:
+            sqlite_connection = sqlite3.connect(server_data.login_file)
+            print("** Connection to DB successful.")
+
+            query = f"SELECT username, password FROM creds WHERE "
+            query += f"username = \"{username}\" and password = \"{password}\" LIMIT 1"
+
+            cursor = sqlite_connection.cursor()
+            cursor.execute(query)
+
+            result = cursor.fetchall()
+            return result
+        
+        except sqlite3.Error as error:
+            print(f"[!] Error: {error}")
+
+        finally:
+            # If sql connection exist, close the sql connection.
+            if (sqlite_connection):
+                sqlite_connection.close()
+                print("** Connection to DB closed.")
+
+    else:
+        print("[!] Unable to find DB file.")
+        sys.exit(1)
 
 def process_connection(connection, ip_address): 
     user_command = connection.recv(4096).decode()
@@ -314,6 +363,33 @@ def process_connection(connection, ip_address):
 
         return "shutdown_server"
 
+    elif user_command == command_from_client.user_login:
+        encrypted_username_and_password = connection.recv(4096).decode()
+
+        print(f"** Received encrypted username and password:\n{encrypted_username_and_password}")
+        encrypted_username_and_password = b64decode(encrypted_username_and_password)
+
+        private_key = RSA.import_key(open(server_side_security.private_key_file).read())
+        
+        print("** Decrypting username and password.")
+        username_and_password = server_side_security.rsa_decrypt(encrypted_username_and_password, private_key)
+        username_and_password = eval(username_and_password) # Convert from string to tuple.
+
+        username = username_and_password[0]
+        password = username_and_password[1]
+
+        authentication_results = authenticate_user(username, password)
+        
+        if len(authentication_results) > 0: authentication_successful = "yes"
+        else: authentication_successful = "no"
+
+        client_public_key = RSA.import_key(open(server_side_security.client_public_key_file).read())
+        authentication_successful_encrypted = b64encode(server_side_security.rsa_encrypt(authentication_successful.encode(), client_public_key))
+        connection.send(authentication_successful_encrypted)
+        print(f"** Sending authentication results back to the client:\n{authentication_successful_encrypted}")
+
+        return
+
 def connection_handler(connection, ip_address, port):
     return_code = process_connection(connection, ip_address)
     connection.close()
@@ -381,7 +457,7 @@ def start_server():
 def initialise():
     while True:
         clear_screen()
-        print_header("Server Login Screen")
+        print_header("Server - Decrypt private key file")
         
         password = input("** Input password to decrypt private key file -> ").strip()
         server_side_security.aes_decrypt_file(password, server_side_security.private_key_file_encrypted, server_side_security.private_key_file)
