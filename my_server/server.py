@@ -30,6 +30,7 @@ class Data:
 
         self.md5_of_menu_file = "" 
         self.encrypted_end_of_day_report_signature = ""
+        self.authentication_details_signature = ""
 
 class Command:
     def __init__(self):
@@ -40,8 +41,9 @@ class Command:
         self.download_server_public_key_file_hash = "download_server_public_key_file_hash"
 
         self.upload_end_of_day_report = "upload_end_of_day_report"
-        self.upload_client_public_key_file = "upload_client_public_key_file"
         self.upload_end_of_day_report_signature = "upload_end_of_day_report_signature"
+        self.upload_authentication_details_signature = "upload_authentication_details_signature"
+        self.upload_client_public_key_file = "upload_client_public_key_file"
 
         self.create_private_and_public_key = "create_private_and_public_key"
         self.remotely_encrypt_server_private_key_file = "remotely_encrypt_server_private_key_file"
@@ -73,12 +75,12 @@ class Security:
         with open(self.private_key_file, 'wb') as private_key_file: 
             private_key_file.write(private_key)
 
-        print(f"[X] Done creating Private Key: {self.private_key_file}")
+        print(f"[I] Done creating Private Key:\n{self.private_key_file}")
 
         with open(self.public_key_file, 'wb') as public_key_file: 
             public_key_file.write(public_key)
 
-        print(f"[X] Done creating Public Key: {self.public_key_file}")
+        print(f"[I] Done creating Public Key:\n{self.public_key_file}")
 
     def pad(self, plaintext):
         # AES.block_size = 16
@@ -107,11 +109,11 @@ class Security:
         with open(destination_file, "wb") as dest_file: 
             dest_file.write(ciphertext)
 
-        print(f"[+] Encrypted \"{file_to_be_encrypted}\" TO \"{destination_file}\" ")
+        print(f"[+] Encrypted -> \"{file_to_be_encrypted}\" TO \"{destination_file}\" ")
 
         remove(file_to_be_encrypted) # Remove the original plaintext file from disk.
 
-        print(f"[+] Removed original file \"{file_to_be_encrypted}\"")
+        print(f"[+] Removed original file: \"{file_to_be_encrypted}\"")
 
     def aes_decrypt(self, ciphertext, password):
         private_key = hashlib.sha256(password.encode()).digest()
@@ -182,6 +184,14 @@ class Security:
         
         else:
             print(f"[!] File not found: {target_file}")
+
+    def sign(self, message, private_key):
+        signer = PKCS1_v1_5.new(private_key)
+        
+        digest = MD5.new()
+        digest.update(message)
+        
+        return signer.sign(digest)
 
     def verify(self, message, signature, public_key):
         signer = PKCS1_v1_5.new(public_key)
@@ -294,13 +304,13 @@ def process_connection(connection, ip_address):
     elif user_command == command_from_client.upload_client_public_key_file:
         download_file(connection, server_side_security.client_public_key_file)
 
-        print(f"[+] Saving client's public key file as: {server_side_security.client_public_key_file}")
+        print(f"[+] Saving client's public key file as:\n{server_side_security.client_public_key_file}")
 
     elif user_command == command_from_client.upload_end_of_day_report:
         encrypted_end_of_day_report_filename = server_data.encrypted_end_of_day_report_file_base + ip_address + " - " + get_formatted_date_and_time() + ".rsa"
         download_file(connection, encrypted_end_of_day_report_filename)
 
-        print(f"[+] Saving encrypted end of day report as: {encrypted_end_of_day_report_filename}")
+        print(f"[+] Saving encrypted end of day report as:\n{encrypted_end_of_day_report_filename}")
 
         try:        
             data = open(encrypted_end_of_day_report_filename, "rb").read()
@@ -317,13 +327,13 @@ def process_connection(connection, ip_address):
                 private_key = RSA.import_key(open(server_side_security.private_key_file).read())
                 server_side_security.rsa_decrypt_file(encrypted_end_of_day_report_filename, decrypted_filename, private_key)
                 
-                print(f"[+] Decrypted end of day report as: {decrypted_filename}") 
+                print(f"[+] Decrypted end of day report as:\n{decrypted_filename}") 
 
             else:
                 print("[!] Unable to verify that data is from client and integrity of data is not intact.")
 
                 remove(encrypted_end_of_day_report_filename)
-                print(f"[!] Removed tampered data: {encrypted_end_of_day_report_filename}")
+                print(f"[!] Removed tampered data:\n{encrypted_end_of_day_report_filename}")
 
         except Exception as error:
             print(f"[!] Error: {error}")
@@ -334,7 +344,14 @@ def process_connection(connection, ip_address):
         end_of_day_report_signature = connection.recv(4096).decode()
         server_data.encrypted_end_of_day_report_signature = end_of_day_report_signature
 
-        print(f"[+] Received end of day report signature: {end_of_day_report_signature}")
+        print(f"[+] Received end of day report signature:\n{end_of_day_report_signature}")
+        return
+
+    elif user_command == command_from_client.upload_authentication_details_signature:
+        authentication_details_signature = connection.recv(4096).decode()
+        server_data.authentication_details_signature = authentication_details_signature
+
+        print(f"[+] Received authentication details signature:\n{authentication_details_signature}")
         return
 
     elif user_command == command_from_client.create_private_and_public_key:
@@ -368,25 +385,45 @@ def process_connection(connection, ip_address):
 
         print(f"** Received encrypted username and password:\n{encrypted_username_and_password}")
         encrypted_username_and_password = b64decode(encrypted_username_and_password)
-
-        private_key = RSA.import_key(open(server_side_security.private_key_file).read())
-        
-        print("** Decrypting username and password.")
-        username_and_password = server_side_security.rsa_decrypt(encrypted_username_and_password, private_key)
-        username_and_password = eval(username_and_password) # Convert from string to tuple.
-
-        username = username_and_password[0]
-        password = username_and_password[1]
-
-        authentication_results = authenticate_user(username, password)
-        
-        if len(authentication_results) > 0: authentication_successful = "yes"
-        else: authentication_successful = "no"
-
+      
         client_public_key = RSA.import_key(open(server_side_security.client_public_key_file).read())
-        authentication_successful_encrypted = b64encode(server_side_security.rsa_encrypt(authentication_successful.encode(), client_public_key))
-        connection.send(authentication_successful_encrypted)
-        print(f"** Sending authentication results back to the client:\n{authentication_successful_encrypted}")
+        verification_result = server_side_security.verify(encrypted_username_and_password, server_data.authentication_details_signature, client_public_key)
+        print(f"[I] Signature verification results: {verification_result}")
+
+        if verification_result == True:
+            print("** Verified that authentication details are from client. Will proceed with decrypting username and password.")
+            
+            private_key = RSA.import_key(open(server_side_security.private_key_file).read())
+            username_and_password = server_side_security.rsa_decrypt(encrypted_username_and_password, private_key)
+            username_and_password = eval(username_and_password) # Convert from string to tuple.
+
+            username = username_and_password[0]
+            password = username_and_password[1]
+
+            authentication_results = authenticate_user(username, password)
+            
+            if len(authentication_results) > 0: authentication_successful = "yes"
+            else: authentication_successful = "no"
+
+            client_public_key = RSA.import_key(open(server_side_security.client_public_key_file).read())
+            authentication_successful_encrypted = b64encode(server_side_security.rsa_encrypt(authentication_successful.encode(), client_public_key))
+            connection.send(authentication_successful_encrypted)
+            print(f"** Sending authentication results back to the client:\n{authentication_successful_encrypted.decode()}")
+
+            server_private_key = RSA.import_key(open(server_side_security.private_key_file).read())
+            authentication_successful_encrypted = b64decode(authentication_successful_encrypted)
+            authentication_successful_encrypted_signature = b64encode(server_side_security.sign(authentication_successful_encrypted, server_private_key))
+            print(f"** Authentication details signature:\n{authentication_successful_encrypted_signature.decode()}")
+
+            connection.send(authentication_successful_encrypted_signature)
+            print(f"** Completed: [Sending] authentication details signature to the client.")
+
+        else:
+            authentication_successful = "no"
+            client_public_key = RSA.import_key(open(server_side_security.client_public_key_file).read())
+            authentication_successful_encrypted = b64encode(server_side_security.rsa_encrypt(authentication_successful.encode(), client_public_key))
+            connection.send(authentication_successful_encrypted)
+            print("[!] Authentication details has been tampered. Will skip processing login this time.")
 
         return
 
@@ -395,7 +432,7 @@ def connection_handler(connection, ip_address, port):
     connection.close()
 
     connection_terminated_time = datetime.datetime.now().strftime("%H:%M:%S")            
-    print(f"[-] Connection Terminated -> {connection_terminated_time} ({ip_address} : {port})")
+    print(f"[-] Connection Terminated -> {connection_terminated_time} IP: {ip_address} PORT: {port}")
 
     if return_code != "": return return_code
     else: return
@@ -433,7 +470,7 @@ def start_server():
                 ip_address, port = str(address[0]), str(address[1])
 
                 connection_made_time = datetime.datetime.now().strftime("%H:%M:%S")            
-                print(f"[+] Connection Made -> {connection_made_time} ({ip_address} : {port})")
+                print(f"[+] Connection Made -> {connection_made_time} IP: {ip_address} PORT: {port}")
 
                 try:
                     return_code = connection_handler(connection, ip_address, port)

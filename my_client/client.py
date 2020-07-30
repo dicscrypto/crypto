@@ -37,6 +37,7 @@ class Command:
 
         self.upload_end_of_day_report = "upload_end_of_day_report"
         self.upload_end_of_day_report_signature = "upload_end_of_day_report_signature"
+        self.upload_authentication_details_signature = "upload_authentication_details_signature"
         self.upload_client_public_key_file = "upload_client_public_key_file"
 
         self.create_private_and_public_key = "create_private_and_public_key"
@@ -70,12 +71,12 @@ class Security:
         with open(self.private_key_file, 'wb') as private_key_file: 
             private_key_file.write(private_key)
 
-        print(f"** Done creating Private Key: {self.private_key_file}")
+        print(f"** Done creating Private Key:\n{self.private_key_file}")
 
         with open(self.public_key_file, 'wb') as public_key_file: 
             public_key_file.write(public_key)
 
-        print(f"** Done creating Public Key: {self.public_key_file}")
+        print(f"** Done creating Public Key:\n{self.public_key_file}")
 
     def pad(self, plaintext):
         # AES.block_size = 16
@@ -104,7 +105,7 @@ class Security:
         with open(destination_file, "wb") as dest_file: 
             dest_file.write(ciphertext)
 
-        print(f"\n** Encrypted \"{file_to_be_encrypted}\" TO \"{destination_file}\" ")
+        print(f"\n** Encrypted -> \"{file_to_be_encrypted}\" TO \"{destination_file}\" ")
 
         remove(file_to_be_encrypted) # Remove the original plaintext file from disk.
 
@@ -261,27 +262,27 @@ def upload_end_of_day_report_and_perform_integrity_check():
 
     try:
         upload_file(command_to_server.upload_client_public_key_file, client_side_security.public_key_file)
-        print(f"\nUploaded client's public key file: {client_side_security.public_key_file}")
+        print(f"\n** Uploaded client's public key file:\n{client_side_security.public_key_file}")
 
         download_file(command_to_server.download_server_public_key_file, client_side_security.server_public_key_file)
-        print(f"\nDownloaded server's public key file: {client_side_security.server_public_key_file}")
+        print(f"\n** Downloaded server's public key file:\n{client_side_security.server_public_key_file}")
 
         server_public_key = RSA.import_key(open(client_side_security.server_public_key_file).read())
         client_side_security.rsa_encrypt_file(client_data.end_of_day_report_file, client_data.encrypted_end_of_day_report_file, server_public_key)
-        print(f"\nSuccessfully encrypted: {client_data.end_of_day_report_file}")
+        print(f"\n** Successfully encrypted:\n{client_data.end_of_day_report_file}")
 
         long_pause()
 
         data = open(client_data.encrypted_end_of_day_report_file, "rb").read()
         client_private_key = RSA.import_key(open(client_side_security.private_key_file).read())
         end_of_day_report_signature = b64encode(client_side_security.sign(data, client_private_key))
-        print(f"\nData signed with private key: {end_of_day_report_signature.decode()}")
+        print(f"\n** Data signed with private key:\n{end_of_day_report_signature.decode()}")
 
         upload_signature(command_to_server.upload_end_of_day_report_signature, end_of_day_report_signature)
-        print("\nSuccessfully uploaded signature.")
+        print("\n** Successfully uploaded signature.")
 
         upload_file(command_to_server.upload_end_of_day_report, client_data.encrypted_end_of_day_report_file)
-        print(f"\nSuccessfully uploaded: {client_data.encrypted_end_of_day_report_file}")
+        print(f"\n** Successfully uploaded:\n{client_data.encrypted_end_of_day_report_file}")
 
         pause()
 
@@ -452,12 +453,12 @@ def locally_encrypt_client_private_key_file():
 
         print(instructions)
 
-        password = input("Please enter password -> ").strip()
+        password = input("** Please enter password -> ").strip()
 
         error = client_side_security.password_check(password)
 
         if error == "":
-            repeat_password = input("Please re-enter password again -> ").strip()
+            repeat_password = input("** Please re-enter password again -> ").strip()
 
             if repeat_password == password:
                 client_side_security.aes_encrypt_file(password, client_side_security.private_key_file, client_side_security.private_key_file_encrypted)
@@ -524,6 +525,71 @@ def admin_menu():
             print("\nOnly accepts digits.")
             short_pause()
 
+def login():
+    while True:
+        clear_screen()
+        print_header("Login")
+
+        username = input("** Username -> ").lower().strip()
+        password = input("** Password -> ").strip()
+
+        # To get its hash equivalent. If password is correct, hash will match.
+        hashed_password = hashlib.md5(password.encode()).hexdigest() 
+
+        username_and_password = tuple()
+        username_and_password = (username, hashed_password)
+        username_and_password = str(username_and_password).encode()
+
+        server_public_key = RSA.import_key(open(client_side_security.server_public_key_file).read())
+        username_and_password_ciphertext = client_side_security.rsa_encrypt(username_and_password, server_public_key)
+        print(f"\n** Encrypted username and password to:\n{b64encode(username_and_password_ciphertext).decode()}")
+
+        client_private_key = RSA.import_key(open(client_side_security.private_key_file).read())
+        authentication_details_signature = b64encode(client_side_security.sign(username_and_password_ciphertext, client_private_key))
+        print(f"\n** Authentication details signed with private key:\n{authentication_details_signature.decode()}")
+
+        upload_signature(command_to_server.upload_authentication_details_signature, authentication_details_signature)
+        print("\n** Uploaded authentication details signature to the server.")
+
+        username_and_password_ciphertext = b64encode(username_and_password_ciphertext)
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
+            client_socket.sendall((command_to_server.user_login.encode()))
+
+            short_pause()
+            client_socket.send(username_and_password_ciphertext)
+            print("\n** Sending encrypted username and password to server.")
+            print("\n** Waiting for a reply from the server.")
+
+            authentication_reply_encrypted = client_socket.recv(4096).decode()
+            print(f"\n** Authentication reply from server:\n{authentication_reply_encrypted}")
+            authentication_reply_encrypted = b64decode(authentication_reply_encrypted)
+
+            authentication_details_signature = client_socket.recv(4096).decode()
+            print(f"\n** Authentication details signature from server:\n{authentication_details_signature}")
+            
+        authentication_details_signature = b64decode(authentication_details_signature)
+        verification_results = client_side_security.verify(authentication_reply_encrypted, authentication_details_signature, server_public_key)
+        print(f"\n** Verification results:\n{verification_results}")
+
+        if verification_results == True:
+            print("\n** Verified that authentication details are from server. Will proceed with decrpyting authentication details.")
+
+            client_private_key = RSA.import_key(open(client_side_security.private_key_file).read())
+            authentication_reply = client_side_security.rsa_decrypt(authentication_reply_encrypted, client_private_key)
+            print(f"\n** Decrypting authentication reply:\n{authentication_reply}")
+
+            pause()
+
+            if authentication_reply == "yes": 
+                return_code = admin_menu()
+                if return_code == "break": break
+
+        else:
+            print("\n[!] Authentication details has been tampered. Will skip processing login this time.")
+            pause()
+
 def initialise():
     clear_screen()
     return_code = download_server_public_key()
@@ -551,46 +617,6 @@ def initialise():
     else:
         print("[!] Server public key file is corrupted.")
         pause()
-
-def login():
-    while True:
-        clear_screen()
-        print_header("Login")
-
-        username = input("** Username -> ").lower().strip()
-        password = input("** Password -> ").strip()
-
-        # To get its hash equivalent. If password is correct, hash will match.
-        hashed_password = hashlib.md5(password.encode()).hexdigest() 
-
-        username_and_password = tuple()
-        username_and_password = (username, hashed_password)
-        username_and_password = str(username_and_password).encode()
-
-        server_public_key = RSA.import_key(open(client_side_security.server_public_key_file).read())
-        username_and_password_ciphertext = b64encode(client_side_security.rsa_encrypt(username_and_password, server_public_key))
-
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-            client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
-            client_socket.sendall((command_to_server.user_login.encode()))
-
-            short_pause()
-            client_socket.send(username_and_password_ciphertext)
-            print(f"\n** Sending encrypted username and password to server:\n{username_and_password_ciphertext.decode()}")
-            print("\n** Waiting for a reply from the server.")
-
-            authentication_reply_encrypted = client_socket.recv(4096).decode()
-            print(f"\n** Authentication reply from server:\n{authentication_reply_encrypted}")
-            authentication_reply_encrypted = b64decode(authentication_reply_encrypted)
-
-            client_private_key = RSA.import_key(open(client_side_security.private_key_file).read())
-            authentication_reply = client_side_security.rsa_decrypt(authentication_reply_encrypted, client_private_key)
-            print(f"\n** Decrypting authentication reply:\n{authentication_reply}")
-
-        pause()
-        if authentication_reply == "yes": 
-            return_code = admin_menu()
-            if return_code == "break": break
 
 connect_to_server = Connection("127.0.0.1", 4444)
 command_to_server = Command()
