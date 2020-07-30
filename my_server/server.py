@@ -432,7 +432,7 @@ def connection_handler(connection, ip_address, port):
     connection.close()
 
     connection_terminated_time = datetime.datetime.now().strftime("%H:%M:%S")            
-    print(f"[-] Connection Terminated -> {connection_terminated_time} IP: {ip_address} PORT: {port}")
+    print(f"[-] Connection Terminated -> Time: {connection_terminated_time} IP: {ip_address} PORT: {port}")
 
     if return_code != "": return return_code
     else: return
@@ -470,7 +470,7 @@ def start_server():
                 ip_address, port = str(address[0]), str(address[1])
 
                 connection_made_time = datetime.datetime.now().strftime("%H:%M:%S")            
-                print(f"[+] Connection Made -> {connection_made_time} IP: {ip_address} PORT: {port}")
+                print(f"[+] Connection Made -> Time: {connection_made_time} IP: {ip_address} PORT: {port}")
 
                 try:
                     return_code = connection_handler(connection, ip_address, port)

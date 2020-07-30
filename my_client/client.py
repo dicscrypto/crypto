@@ -408,11 +408,11 @@ def remotely_encrypt_server_private_key_file():
     while True:
         clear_screen()
 
-        password = input("Enter the password used to encrypted server's private key file -> ").strip()
+        password = input("** Enter the password used to encrypted server's private key file -> ").strip()
         error = client_side_security.password_check(password)
 
         if error == "":
-            repeat_password = input("Enter the password again that is used to encrypt server's private key file -> ").strip()
+            repeat_password = input("** Enter the password again that is used to encrypt server's private key file -> ").strip()
 
             if repeat_password == password:
                 password = hashlib.sha256(password.encode()).digest()
@@ -430,8 +430,8 @@ def remotely_encrypt_server_private_key_file():
                     server_reply = client_socket.recv(4096).decode()
 
                     if server_reply == "private key encryption ok":
-                        print("\nSuccessfully encrypted server's private key file.")
-                        print("Server will now terminate. Please relaunch client after starting up server.")
+                        print("\n** Successfully encrypted server's private key file.")
+                        print("\n** Server will now restart. Please relaunch client after starting up server.")
                         sys.exit(0)
 
             else: 
@@ -481,9 +481,14 @@ def check_error_after_decryption(destination_file):
     else: return "failed"
 
 def logout():
-    remove(client_side_security.private_key_file)
-    print(f"\n** Removed -> {client_side_security.private_key_file}")
-    short_pause()
+    private_key_file_exist = path.exists(client_side_security.private_key_file)
+
+    if private_key_file_exist:
+        remove(client_side_security.private_key_file)
+        print(f"\n** Removed -> {client_side_security.private_key_file}")
+        short_pause()
+    
+    else: pass
 
 def admin_menu():
     while True:
@@ -504,18 +509,21 @@ def admin_menu():
             option = int(input(instructions).strip())
 
             if option == 0: 
-                remove(client_side_security.private_key_file)
+                logout()
                 return "break"
             
             elif option == 1: 
                 create_private_and_public_key_on_server_and_download_server_public_key()
+                return "break"
 
             elif option == 2: 
                 clear_screen()
                 client_side_security.create_private_and_public_key()
-                
                 return_code = locally_encrypt_client_private_key_file()
-                if return_code == "break": logout()
+                
+                if return_code == "break":
+                    logout()
+                    return "break"
                 
             elif option == 3: download_menu_and_perform_integrity_check()
             elif option == 4: upload_end_of_day_report_and_perform_integrity_check()
