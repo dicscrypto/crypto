@@ -7,6 +7,8 @@ import re
 
 from os import getcwd, system, path, remove
 from base64 import b64encode, b64decode
+from datetime import date
+from calendar import day_name
 
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
@@ -21,12 +23,48 @@ class Connection:
         self.port = port
 
 class Data:
+    weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    current_day = day_name[date.today().weekday()]
+   
     def __init__(self):
         self.menu_file = getcwd() + "\\menu.txt"
         self.end_of_day_report_file = getcwd() + "\\day_end.txt"
         self.encrypted_end_of_day_report_file = getcwd() + "\\day_end_encrypted.rsa"
+        
+        self.food_dict = dict()
+        self.todays_food_menu_dict = dict()
 
         self.md5_of_menu_file = ""
+
+    def load_data_from_file(self):
+        menu_file_exist = path.exists(self.menu_file)
+
+        if menu_file_exist:
+            food_data = open(self.menu_file).readlines()
+            return food_data
+        
+        else:
+            print(f"[!] Menu file not found:\n{self.menu_file}")
+            sys.exit(1)
+
+    def load_data_to_nested_dict(self, food_data):
+        temp_food_dict = dict()
+
+        for day_of_the_week in self.weekdays:
+            food_name_and_price_dict = dict()
+
+            for food in food_data:
+                food_day, food_name, food_price = food.split(',')
+
+                if food_day == day_of_the_week:
+                    food_name_and_price_dict[food_name] = float(food_price)
+    
+            temp_food_dict[day_of_the_week] = food_name_and_price_dict
+
+        return temp_food_dict
+
+    def get_todays_menu(self):
+        self.todays_food_menu_dict = self.food_dict.get(self.current_day)
 
 class Command:
     def __init__(self):
@@ -309,6 +347,11 @@ def download_hash(command_to_be_sent):
 
     return downloaded_hash
 
+def download_menu_and_load_food_data_into_nested_dict():
+    download_menu_and_perform_integrity_check()
+    food_data = client_data.load_data_from_file()
+    client_data.food_dict = client_data.load_data_to_nested_dict(food_data)
+
 def download_menu_and_perform_integrity_check():
     clear_screen()
 
@@ -317,11 +360,11 @@ def download_menu_and_perform_integrity_check():
         md5_of_menu_file_from_server = download_hash(command_to_server.download_menu_hash)
         local_md5_of_menu_file = client_side_security.get_file_hash(client_data.menu_file)
 
-        print(f"Local MD5 of menu file: {local_md5_of_menu_file}")
-        print(f"MD5 of menu file from server: {md5_of_menu_file_from_server}")
+        print(f"** Local MD5 of menu file: {local_md5_of_menu_file}")
+        print(f"** MD5 of menu file from server: {md5_of_menu_file_from_server}")
 
-        if local_md5_of_menu_file == md5_of_menu_file_from_server: print("\nHash check passed.")
-        else: print("\nHash check failed.")
+        if local_md5_of_menu_file == md5_of_menu_file_from_server: print("\n** Hash check: Passed")
+        else: print("\n** Hash check: Failed")
 
         pause()
 
@@ -490,10 +533,20 @@ def logout():
     
     else: pass
 
+def display_todays_menu():
+    clear_screen()
+    print_header(f"{client_data.current_day}'s Food")
+
+    for count, food_name in enumerate(client_data.todays_food_menu_dict, 1):
+        food_price = client_data.todays_food_menu_dict.get(food_name)
+        print(f"{count}. {food_name.ljust(35)} ${food_price:.2f}")
+
+    pause()
+
 def admin_menu():
     while True:
         clear_screen()
-        print_header("Admin Menu")
+        print_header("Welcome to SPAM - (Admin Menu)")
 
         print("1. Create Key pair on Server.")
         print("2. Create Key pair on Client.")
@@ -528,6 +581,32 @@ def admin_menu():
             elif option == 3: download_menu_and_perform_integrity_check()
             elif option == 4: upload_end_of_day_report_and_perform_integrity_check()
             elif option == 5: shutdown_server()
+
+        except ValueError:
+            print("\nOnly accepts digits.")
+            short_pause()
+
+def user_menu():
+    download_menu_and_load_food_data_into_nested_dict()
+
+    while True:
+        clear_screen()
+        print_header("Welcome to SPAM - (User Menu)")
+
+        print("1. Today's Menu.")
+
+        instructions = "\nOnly accepts digits."
+        instructions += "\nEnter '0' to exit."
+        instructions += "\n\nOption -> "
+
+        try:
+            option = int(input(instructions).strip())
+
+            if option == 0: break
+
+            elif option == 1: 
+                client_data.get_todays_menu()
+                display_todays_menu()
 
         except ValueError:
             print("\nOnly accepts digits.")
@@ -590,9 +669,11 @@ def login():
 
             pause()
 
-            if authentication_reply == "yes": 
+            if authentication_reply == "admin_yes": 
                 return_code = admin_menu()
                 if return_code == "break": break
+            
+            elif authentication_reply == "yes": user_menu()
 
         else:
             print("\n[!] Authentication details has been tampered. Will skip processing login this time.")
@@ -616,7 +697,6 @@ def initialise():
 
             decrypting_result = check_error_after_decryption(client_side_security.private_key_file)
 
-            #if decrypting_result == "ok": admin_menu()
             if decrypting_result == "ok": login()
             else: 
                 print("\nWrong password.")

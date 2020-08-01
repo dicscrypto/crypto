@@ -250,8 +250,8 @@ def authenticate_user(username, password):
             sqlite_connection = sqlite3.connect(server_data.login_file)
             print("** Connection to DB successful.")
 
-            query = f"SELECT username, password FROM creds WHERE "
-            query += f"username = \"{username}\" and password = \"{password}\" LIMIT 1"
+            query = f"SELECT * FROM creds WHERE "
+            query += f"username = \"{username}\" AND password = \"{password}\" LIMIT 1"
 
             cursor = sqlite_connection.cursor()
             cursor.execute(query)
@@ -402,7 +402,13 @@ def process_connection(connection, ip_address):
 
             authentication_results = authenticate_user(username, password)
             
-            if len(authentication_results) > 0: authentication_successful = "yes"
+            if len(authentication_results) > 0: 
+                authentication_results = authentication_results[0]
+                is_admin = authentication_results[2]
+
+                if is_admin == "yes": authentication_successful = "admin_yes"
+                else: authentication_successful = "yes"
+
             else: authentication_successful = "no"
 
             client_public_key = RSA.import_key(open(server_side_security.client_public_key_file).read())
