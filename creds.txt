@@ -1,0 +1,2 @@
+admin P@ssw0rd1
+user P@ssw0rd2
