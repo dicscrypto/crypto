@@ -15,7 +15,7 @@ from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Signature import PKCS1_v1_5
 from Crypto import Random
 from Crypto.Cipher import AES
-from Crypto.Hash import MD5
+from Crypto.Hash import MD5, SHA256
 
 class Connection:
     def __init__(self, ip_address, port):
@@ -222,7 +222,8 @@ class Security:
     def sign(self, message, private_key):
         signer = PKCS1_v1_5.new(private_key)
         
-        digest = MD5.new()
+        #digest = MD5.new()
+        digest = SHA256.new()
         digest.update(message)
         
         return signer.sign(digest)
@@ -230,7 +231,8 @@ class Security:
     def verify(self, message, signature, public_key):
         signer = PKCS1_v1_5.new(public_key)
 
-        digest = MD5.new()
+        #digest = MD5.new()
+        digest = SHA256.new()
         digest.update(message)
 
         return signer.verify(digest, signature)
