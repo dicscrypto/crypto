@@ -9,6 +9,7 @@ from os import getcwd, system, path, remove
 from base64 import b64encode, b64decode
 from datetime import date
 from calendar import day_name
+from subprocess import Popen
 
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
@@ -36,6 +37,7 @@ class Data:
         self.search_hits_dict = dict()
         self.ordered_food_dict = dict()
         self.food_cart = dict()
+        self.day_end_dict = dict()
 
         self.md5_of_menu_file = ""
 
@@ -536,10 +538,113 @@ def logout():
         print(f"\n** Removed -> {client_side_security.private_key_file}")
         short_pause()  
 
+def list_order():
+    while True:
+        clear_screen()
+        print_header("Order")
+        amount_to_pay = list_cart(client_data.food_cart)
+
+        instructions = "\np - payment\nc - clear cart\nb - previous menu"
+        instructions += "\nOther inputs will not be accepted."
+        instructions += "\n\nOption -> "
+
+        option = input(instructions).strip()
+
+        if option == 'c':
+            client_data.food_cart.clear()
+            print("\nCart cleared!")
+            pause()
+            break
+
+        elif option == 'b': break
+
+        elif option == 'p':
+            if make_payment(amount_to_pay) == "payment made":
+                client_data.food_cart.clear()
+                break
+
+        else:
+            print("\nOnly 'p', 'c', 'b' are accepted.")
+            short_pause()
+
+def list_cart(food_dict):
+    total_price = 0
+
+    for count, food_name in enumerate(food_dict, 1):
+        price_and_quantity_list = food_dict.get(food_name)
+        food_price = price_and_quantity_list[0]
+        food_quantity = price_and_quantity_list[1]
+        food_price *= food_quantity
+        total_price += food_price
+
+        print(f"{count}. {food_name} X {str(food_quantity).ljust(35)} ${food_price:.2f}")
+
+    net_price = total_price
+    total_price = f"${total_price:.2f}"
+    print_header(f"Total {total_price.rjust(55)}")
+
+    return net_price
+
 def list_food(food_dict):
     for count, food_name in enumerate(food_dict, 1):
         food_price = food_dict.get(food_name)
         print(f"{count}. {food_name.ljust(35)} ${food_price:.2f}")
+ 
+def update_day_end():
+    for food_name in client_data.food_cart:
+        price_and_quantity_list = client_data.food_cart.get(food_name)
+        food_quantity = price_and_quantity_list[1]
+
+        if food_name in client_data.day_end_dict:
+            updated_quantity = client_data.day_end_dict.get(food_name) + food_quantity
+            client_data.day_end_dict[food_name] = updated_quantity
+
+        else: client_data.day_end_dict[food_name] = food_quantity
+
+    with open(client_data.end_of_day_report_file, "w") as report_to_write:
+        for food_name in client_data.day_end_dict:
+            food_quantity = client_data.day_end_dict.get(food_name)
+            data_to_write = f"{food_name},{food_quantity}\n"
+            report_to_write.write(data_to_write)
+    
+    Popen(["notepad.exe", client_data.end_of_day_report_file])
+
+def make_payment(amount_to_pay):
+    while True:
+        clear_screen()
+        print_header("Payment")
+
+        print(f"Amount to pay -> ${amount_to_pay:.2f}")
+
+        instructions = "\nOnly digits(floating points) are accepted."
+        instructions += "\nEnter \"0\" to cancel payment."
+        instructions += "\n\nPlease enter amount to pay -> $"
+
+        try:
+            amount_from_customer = float(input(instructions).strip())
+
+            if amount_from_customer == 0:
+                print("\nYou have chosen to cancel payment.")
+                short_pause()
+                break
+
+            elif amount_from_customer < amount_to_pay:
+                print("\nPlease provide exact amount or more.")
+                short_pause()
+
+            else:
+                customers_change = amount_from_customer - amount_to_pay
+                print(f"\nChange -> ${customers_change:.2f}")
+                print("\nThank you for supporting SPAM!")
+                
+                update_day_end()
+
+                pause()
+                return "payment made"
+
+        except ValueError:
+            print("\nOnly digits(floating points) are accepted.")
+            short_pause()
 
 def specify_quantity(ordered_food_name, ordered_food_price):
     clear_screen()
@@ -596,7 +701,7 @@ def order_food():
 
             elif option < 1 or option > len(client_data.search_hits_dict):
                 print("\nInvalid option.")
-                pause()
+                short_pause()
             
             else:
                 for count, food_name in enumerate(client_data.search_hits_dict, 1):
@@ -727,8 +832,10 @@ def user_menu():
                 search_food()
                 
             elif option == 3:
-                print(f"\n{client_data.food_cart}")
-                pause()
+                if len(client_data.food_cart) > 0: list_order()
+                else: 
+                    print("\nThere are no items in the cart.")
+                    pause()
 
         except ValueError:
             print("\nOnly accepts digits.")

@@ -22,6 +22,6 @@ Saturday,Rendang Beef,6.0
 Saturday,Ayam Penyet,6.5
 Saturday,Chicken Congee,5.4
 Sunday,Chicken Kebab,8.0
-Sunday,Ramly Chicken Burger,5.5
+Sunday,Chicken Burger,5.5
 Sunday,Beef Burger,5.9
 Sunday,Oblong Burger,5.5
