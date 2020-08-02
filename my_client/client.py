@@ -33,6 +33,9 @@ class Data:
         
         self.food_dict = dict()
         self.todays_food_menu_dict = dict()
+        self.search_hits_dict = dict()
+        self.ordered_food_dict = dict()
+        self.food_cart = dict()
 
         self.md5_of_menu_file = ""
 
@@ -531,18 +534,124 @@ def logout():
     if private_key_file_exist:
         remove(client_side_security.private_key_file)
         print(f"\n** Removed -> {client_side_security.private_key_file}")
+        short_pause()  
+
+def list_food(food_dict):
+    for count, food_name in enumerate(food_dict, 1):
+        food_price = food_dict.get(food_name)
+        print(f"{count}. {food_name.ljust(35)} ${food_price:.2f}")
+
+def specify_quantity(ordered_food_name, ordered_food_price):
+    clear_screen()
+    print_header(f"{ordered_food_name}'s page")
+
+    try:
+        instructions = "Only digits are accepted."
+        instructions += "\nMin order - 1, Max order - 10"
+        instructions += "\nEnter \"0\" to go back to the previous menu."
+        instructions += "\n\nQuantity -> "
+
+        order_quantity = int(input(instructions).strip())
+
+        if order_quantity == 0:
+            print(f"\nYou have cancelled ordering {ordered_food_name}.")
+            short_pause()
+            return "break"
+
+        elif order_quantity < 0:
+            print("\nNegative values are not accepted.")
+            short_pause()
+
+        elif order_quantity > 10:
+            print("\nExcessive quantity are not accepted.")
+            short_pause()
+
+        else:
+            price_and_quantity_list = [ordered_food_price, order_quantity]
+            client_data.food_cart[ordered_food_name] = price_and_quantity_list
+
+            print(f"\nSuccessfully added {ordered_food_name} X {order_quantity} to the cart.")
+            pause()
+            return "break"
+
+    except ValueError:
+        print("\nQuantity must be in digits.")
+        print("In addition, check min\\max digits.")
         short_pause()
-    
-    else: pass
+
+def order_food():
+    while True:
+        clear_screen()
+        print_header("Order Food")
+        list_food(client_data.search_hits_dict)
+
+        try:
+            instructions = "\nEnter \"0\" to exit."
+            instructions += "\nOnly digits are accepted."
+            instructions += "\n\nOption -> "
+
+            option = int(input(instructions).strip())
+
+            if option == 0: break
+
+            elif option < 1 or option > len(client_data.search_hits_dict):
+                print("\nInvalid option.")
+                pause()
+            
+            else:
+                for count, food_name in enumerate(client_data.search_hits_dict, 1):
+                    if option == count:
+                        ordered_food_name = food_name
+                        ordered_food_price = client_data.search_hits_dict.get(food_name)
+                        break
+
+                return_code = specify_quantity(ordered_food_name, ordered_food_price)
+
+                if return_code == "break": break
+
+        except ValueError:
+            print("\nOnly digits are accepted.")
+            short_pause()
+
+def search_food():
+    while True:
+        clear_screen()
+        print_header("Order Food")
+        client_data.search_hits_dict.clear()
+
+        instructions = "Only letters and spaces are accepted."
+        instructions += "\nEnter \"exit\" to go back to the previous menu."
+        instructions += "\n\nFood to search -> "
+
+        food_to_search = input(instructions).lower().strip()
+
+        # Regex that only accepts letters and spaces.
+        regex = r"^[A-Za-z ]*$"
+        passed_regex = re.match(regex, food_to_search)
+
+        if passed_regex and food_to_search != "":
+            if food_to_search == "exit": break
+
+            for food_name in client_data.todays_food_menu_dict:
+                if food_to_search in food_name.lower():
+                    client_data.search_hits_dict[food_name] = client_data.todays_food_menu_dict.get(food_name)
+            
+            if len(client_data.search_hits_dict) > 0:
+                order_food()
+
+            else:
+                print(f"\nNo food that is similar to {food_to_search} found.")
+                short_pause()
+
+        else:
+            print("\nOnly accepts alphabets and spaces.")
+            print("\nInput must also not be empty.")
+            short_pause()
 
 def display_todays_menu():
     clear_screen()
     print_header(f"{client_data.current_day}'s Food")
-
-    for count, food_name in enumerate(client_data.todays_food_menu_dict, 1):
-        food_price = client_data.todays_food_menu_dict.get(food_name)
-        print(f"{count}. {food_name.ljust(35)} ${food_price:.2f}")
-
+    list_food(client_data.todays_food_menu_dict)
     pause()
 
 def admin_menu():
@@ -550,11 +659,12 @@ def admin_menu():
         clear_screen()
         print_header("Welcome to SPAM - (Admin Menu)")
 
-        print("1. Create Key pair on Server.")
-        print("2. Create Key pair on Client.")
+        print("1. Create Key-pair on Server.")
+        print("2. Create Key-pair on Client.")
         print("3. Download Menu.")
-        print("4. Upload End of day report.")
+        print("4. Upload Report.")
         print("5. Shutdown Server.")
+        print("6. Logout.")
         
         instructions = "\nOnly accepts digits."
         instructions += "\nEnter '0' to exit."
@@ -583,6 +693,7 @@ def admin_menu():
             elif option == 3: download_menu_and_perform_integrity_check()
             elif option == 4: upload_end_of_day_report_and_perform_integrity_check()
             elif option == 5: shutdown_server()
+            elif option == 6: break
 
         except ValueError:
             print("\nOnly accepts digits.")
@@ -590,12 +701,15 @@ def admin_menu():
 
 def user_menu():
     download_menu_and_load_food_data_into_nested_dict()
+    client_data.get_todays_menu()
 
     while True:
         clear_screen()
         print_header("Welcome to SPAM - (User Menu)")
 
         print("1. Today's Menu.")
+        print("2. Buy Food.")
+        print("3. Confirm Purchase.")
 
         instructions = "\nOnly accepts digits."
         instructions += "\nEnter '0' to exit."
@@ -607,8 +721,14 @@ def user_menu():
             if option == 0: break
 
             elif option == 1: 
-                client_data.get_todays_menu()
                 display_todays_menu()
+
+            elif option == 2:
+                search_food()
+                
+            elif option == 3:
+                print(f"\n{client_data.food_cart}")
+                pause()
 
         except ValueError:
             print("\nOnly accepts digits.")
