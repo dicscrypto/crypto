@@ -44,6 +44,7 @@ class Command:
         self.upload_end_of_day_report_signature = "upload_end_of_day_report_signature"
         self.upload_authentication_details_signature = "upload_authentication_details_signature"
         self.upload_client_public_key_file = "upload_client_public_key_file"
+        self.upload_client_public_key_hash = "upload_client_public_key_hash"
 
         self.create_private_and_public_key = "create_private_and_public_key"
         self.remotely_encrypt_server_private_key_file = "remotely_encrypt_server_private_key_file"
@@ -58,6 +59,7 @@ class Security:
         self.client_public_key_file = getcwd() + "\\client_public.pem"
 
         self.md5_of_public_key_file = ""
+        self.md5_of_client_public_key_file = ""
 
     def new_keys(self, key_size):
         random_generator = Random.new().read
@@ -303,11 +305,18 @@ def process_connection(connection, ip_address):
         print("** Completed: [Sending] public key file.")
         return
 
+    elif user_command == command_from_client.upload_client_public_key_hash:
+        client_public_key_hash = connection.recv(4096).decode()
+        server_side_security.md5_of_client_public_key_file = client_public_key_hash
+
+        print(f"[+] Received MD5 of Client's public key file: {client_public_key_hash}")
+        return
+
     elif user_command == command_from_client.upload_client_public_key_file:
         download_file(connection, server_side_security.client_public_key_file)
 
         print(f"[+] Saving client's public key file as:\n{server_side_security.client_public_key_file}")
-
+       
     elif user_command == command_from_client.upload_end_of_day_report:
         encrypted_end_of_day_report_filename = server_data.encrypted_end_of_day_report_file_base + ip_address + " - " + get_formatted_date_and_time() + ".rsa"
         download_file(connection, encrypted_end_of_day_report_filename)
@@ -316,9 +325,16 @@ def process_connection(connection, ip_address):
 
         try:        
             data = open(encrypted_end_of_day_report_filename, "rb").read()
+
+            local_md5_of_client_public_key_file = server_side_security.get_file_hash(server_side_security.client_public_key_file)
+            print(f"** Client Public Key File MD5: {local_md5_of_client_public_key_file}")
+            print(f"** Downloaded Client Public Key File MD5: {server_side_security.md5_of_client_public_key_file}")
+            
+            if local_md5_of_client_public_key_file == server_side_security.md5_of_client_public_key_file: print("[+] Hash check passed: No tampering detected on client's public key file.")
+            else: print("[!] Hash check failed: Tampering detected on client's public key file.")
+
             client_public_key = RSA.import_key(open(server_side_security.client_public_key_file).read())
             verification_result = server_side_security.verify(data, server_data.encrypted_end_of_day_report_signature, client_public_key)
-            
             print(f"[I] Signature verification results: {verification_result}")
 
             if verification_result == True:
@@ -388,6 +404,13 @@ def process_connection(connection, ip_address):
         print(f"** Received encrypted username and password:\n{encrypted_username_and_password}")
         encrypted_username_and_password = b64decode(encrypted_username_and_password)
       
+        local_md5_of_client_public_key_file = server_side_security.get_file_hash(server_side_security.client_public_key_file)
+        print(f"** Client Public Key File MD5: {local_md5_of_client_public_key_file}")
+        print(f"** Downloaded Client Public Key File MD5: {server_side_security.md5_of_client_public_key_file}")
+
+        if local_md5_of_client_public_key_file == server_side_security.md5_of_client_public_key_file: print("[+] Hash check passed: No tampering detected on client's public key file.")
+        else: print("[!] Hash check failed: Tampering detected on client's public key file.")
+
         client_public_key = RSA.import_key(open(server_side_security.client_public_key_file).read())
         verification_result = server_side_security.verify(encrypted_username_and_password, server_data.authentication_details_signature, client_public_key)
         print(f"[I] Signature verification results: {verification_result}")

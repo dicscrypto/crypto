@@ -1,3 +1,2 @@
-Oblong Burger,5
-Beef Burger,5
-Chicken Kebab,5
+Chicken Fried Rice,5
+Mamak Fried Rice,10

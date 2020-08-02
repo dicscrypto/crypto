@@ -82,6 +82,7 @@ class Command:
         self.upload_end_of_day_report_signature = "upload_end_of_day_report_signature"
         self.upload_authentication_details_signature = "upload_authentication_details_signature"
         self.upload_client_public_key_file = "upload_client_public_key_file"
+        self.upload_client_public_key_hash = "upload_client_public_key_hash"
 
         self.create_private_and_public_key = "create_private_and_public_key"
         self.remotely_encrypt_server_private_key_file = "remotely_encrypt_server_private_key_file"
@@ -306,6 +307,10 @@ def upload_end_of_day_report_and_perform_integrity_check():
     clear_screen()
 
     try:
+        client_public_key_hash = client_side_security.get_file_hash(client_side_security.public_key_file)
+        upload_data(command_to_server.upload_client_public_key_hash, client_public_key_hash)
+        print(f"\n** Uploaded MD5 of Client's public key file: {client_public_key_hash}")
+
         upload_file(command_to_server.upload_client_public_key_file, client_side_security.public_key_file)
         print(f"\n** Uploaded client's public key file:\n{client_side_security.public_key_file}")
 
@@ -791,8 +796,13 @@ def admin_menu():
                 client_side_security.create_private_and_public_key()
                 return_code = locally_encrypt_client_private_key_file()
 
+                client_public_key_hash = client_side_security.get_file_hash(client_side_security.public_key_file)
+                upload_data(command_to_server.upload_client_public_key_hash, client_public_key_hash)
+                print(f"\n** Uploaded MD5 of Client's public key file: {client_public_key_hash}")
+
                 upload_file(command_to_server.upload_client_public_key_file, client_side_security.public_key_file)
                 print("\n** Uploading client's public key file to the server.")
+
                 pause()
                 
                 if return_code == "break":
@@ -924,6 +934,10 @@ def initialise():
     return_code = download_server_public_key()
 
     if return_code == "pass":
+        client_public_key_hash = client_side_security.get_file_hash(client_side_security.public_key_file)
+        upload_data(command_to_server.upload_client_public_key_hash, client_public_key_hash)
+        print(f"\n** Uploaded MD5 of Client's public key file: {client_public_key_hash}")
+
         upload_file(command_to_server.upload_client_public_key_file, client_side_security.public_key_file)
         print("\n** Uploading client's public key file to the server.")
         pause()
