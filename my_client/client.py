@@ -790,6 +790,10 @@ def admin_menu():
                 clear_screen()
                 client_side_security.create_private_and_public_key()
                 return_code = locally_encrypt_client_private_key_file()
+
+                upload_file(command_to_server.upload_client_public_key_file, client_side_security.public_key_file)
+                print("\n** Uploading client's public key file to the server.")
+                pause()
                 
                 if return_code == "break":
                     logout()
@@ -815,6 +819,7 @@ def user_menu():
         print("1. Today's Menu.")
         print("2. Buy Food.")
         print("3. Confirm Purchase.")
+        print("4. Logout.")
 
         instructions = "\nOnly accepts digits."
         instructions += "\nEnter '0' to exit."
@@ -823,7 +828,9 @@ def user_menu():
         try:
             option = int(input(instructions).strip())
 
-            if option == 0: break
+            if option == 0: 
+                logout()
+                return "break"
 
             elif option == 1: 
                 display_todays_menu()
@@ -836,6 +843,8 @@ def user_menu():
                 else: 
                     print("\nThere are no items in the cart.")
                     pause()
+
+            elif option == 4: break
 
         except ValueError:
             print("\nOnly accepts digits.")
@@ -902,7 +911,9 @@ def login():
                 return_code = admin_menu()
                 if return_code == "break": break
             
-            elif authentication_reply == "yes": user_menu()
+            elif authentication_reply == "yes": 
+                return_code = user_menu()
+                if return_code == "break": break
 
         else:
             print("\n[!] Authentication details has been tampered. Will skip processing login this time.")
