@@ -772,6 +772,23 @@ def decrypt_end_of_day_report():
         print(f"\n** Decrypted end of day report after logging in:\n{client_data.encrypted_end_of_day_report_file}")
         pause()
 
+def about_us():
+    clear_screen()
+    
+    message = "     P7358646 - Suhairy Bin Subori\n"
+    message += "    P7358504 - Muhammad Hairul Anuar Bin Misni\n"
+    message += "    P7358695 - Muhammad Sadiq Bin Murakay\n"
+    message += "    P7358686 - Mohammad Nor ‘Amin Bin Kasmuri\n"
+    message += "    P7358696 - Muhammad Fadzli Bin Roslan\n"
+    message += "    We... are... the... A.... Team!!!"
+    
+    for letter in message:
+        sys.stdout.write(letter)
+        sys.stdout.flush()
+        time.sleep(0.05)
+    
+    pause()
+
 def admin_menu():
     decrypt_end_of_day_report()
 
@@ -841,7 +858,8 @@ def user_menu():
         print("1. Today's Menu.")
         print("2. Buy Food.")
         print("3. Confirm Purchase.")
-        print("4. Logout.")
+        print("4. About us.")
+        print("5. Logout.")
 
         instructions = "\nOnly accepts digits."
         instructions += "\nEnter '0' to exit."
@@ -866,7 +884,8 @@ def user_menu():
                     print("\nThere are no items in the cart.")
                     pause()
 
-            elif option == 4: break
+            elif option == 4: about_us()
+            elif option == 5: break
 
         except ValueError:
             print("\nOnly accepts digits.")
