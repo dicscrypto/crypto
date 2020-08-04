@@ -8,6 +8,7 @@ import sqlite3
 
 from os import getcwd, system, path, remove
 from base64 import b64encode, b64decode
+from glob import glob
 
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
@@ -167,7 +168,7 @@ class Security:
         ciphertext = b64decode(ciphertext) 
         plaintext = self.rsa_decrypt(ciphertext, private_key) 
 
-        with open(destination_file, "w") as dest_file: 
+        with open(destination_file, "w", newline = "\n") as dest_file: 
             dest_file.write(plaintext)
 
     def get_file_hash(self, target_file):
@@ -390,6 +391,15 @@ def process_connection(connection, ip_address):
 
     elif user_command == command_from_client.shutdown_server:
         print("[!] Shutdown signal received. Server shutting down.")
+        short_pause()
+
+        unencrypted_end_of_day_report_filter = getcwd() + "\\day*.txt"
+        list_of_unencrypted_end_of_day_report = glob(unencrypted_end_of_day_report_filter)
+
+        for text_file in list_of_unencrypted_end_of_day_report:
+            remove(text_file)
+            print(f"** Deleted {text_file}")
+
         short_pause()
 
         remove(server_side_security.private_key_file)

@@ -205,7 +205,7 @@ class Security:
         ciphertext = b64decode(ciphertext) 
         plaintext = self.rsa_decrypt(ciphertext, private_key) 
 
-        with open(destination_file, "w") as dest_file: 
+        with open(destination_file, "w", newline = "\n") as dest_file: 
             dest_file.write(plaintext)
 
     def get_file_hash(self, target_file):
@@ -333,6 +333,9 @@ def upload_end_of_day_report_and_perform_integrity_check():
 
         upload_file(command_to_server.upload_end_of_day_report, client_data.encrypted_end_of_day_report_file)
         print(f"\n** Successfully uploaded:\n{client_data.encrypted_end_of_day_report_file}")
+
+        remove(client_data.encrypted_end_of_day_report_file)
+        print(f"\n** Removed:\n{client_data.encrypted_end_of_day_report_file}")
 
         pause()
 
@@ -535,14 +538,6 @@ def check_error_after_decryption(destination_file):
     if b"-----BEGIN RSA PRIVATE KEY-----" in data: return "ok" # If this string is present, most likely decryption is successful.
     else: return "failed"
 
-def logout():
-    private_key_file_exist = path.exists(client_side_security.private_key_file)
-
-    if private_key_file_exist:
-        remove(client_side_security.private_key_file)
-        print(f"\n** Removed -> {client_side_security.private_key_file}")
-        short_pause()  
-
 def list_order():
     while True:
         clear_screen()
@@ -606,11 +601,13 @@ def update_day_end():
 
         else: client_data.day_end_dict[food_name] = food_quantity
 
+    data_to_write = ""
     with open(client_data.end_of_day_report_file, "w") as report_to_write:
         for food_name in client_data.day_end_dict:
             food_quantity = client_data.day_end_dict.get(food_name)
-            data_to_write = f"{food_name},{food_quantity}\n"
-            report_to_write.write(data_to_write)
+            data_to_write += f"{food_name},{food_quantity}\n"
+
+        report_to_write.write(data_to_write.strip())
     
     Popen(["notepad.exe", client_data.end_of_day_report_file])
 
@@ -764,7 +761,20 @@ def display_todays_menu():
     list_food(client_data.todays_food_menu_dict)
     pause()
 
+def decrypt_end_of_day_report():
+    encrypted_end_of_day_report_file_exist = path.exists(client_data.encrypted_end_of_day_report_file)
+
+    if encrypted_end_of_day_report_file_exist:
+        client_private_key = RSA.import_key(open(client_side_security.private_key_file).read())
+        client_side_security.rsa_decrypt_file(client_data.encrypted_end_of_day_report_file, client_data.end_of_day_report_file, client_private_key)
+        remove(client_data.encrypted_end_of_day_report_file)
+        
+        print(f"\n** Decrypted end of day report after logging in:\n{client_data.encrypted_end_of_day_report_file}")
+        pause()
+
 def admin_menu():
+    decrypt_end_of_day_report()
+
     while True:
         clear_screen()
         print_header("Welcome to SPAM - (Admin Menu)")
@@ -822,6 +832,8 @@ def user_menu():
     download_menu_and_load_food_data_into_nested_dict()
     client_data.get_todays_menu()
 
+    decrypt_end_of_day_report()
+    
     while True:
         clear_screen()
         print_header("Welcome to SPAM - (User Menu)")
@@ -859,6 +871,24 @@ def user_menu():
         except ValueError:
             print("\nOnly accepts digits.")
             short_pause()
+
+def logout():
+    private_key_file_exist = path.exists(client_side_security.private_key_file)
+
+    if private_key_file_exist:
+        remove(client_side_security.private_key_file)
+        print(f"\n** Removed -> {client_side_security.private_key_file}")
+        short_pause()  
+    
+    end_of_day_report_file_exist = path.exists(client_data.end_of_day_report_file)
+
+    if end_of_day_report_file_exist:
+        client_public_key = RSA.import_key(open(client_side_security.public_key_file).read())
+        client_side_security.rsa_encrypt_file(client_data.end_of_day_report_file, client_data.encrypted_end_of_day_report_file, client_public_key)
+        remove(client_data.end_of_day_report_file)
+
+        print(f"\n** Encrypt end of day report with client public key file to protect data after logging out:\n{client_data.encrypted_end_of_day_report_file}")
+        pause()
 
 def login():
     while True:
