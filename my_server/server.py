@@ -12,7 +12,7 @@ from glob import glob
 
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
-from Crypto.Signature import PKCS1_v1_5
+from Crypto.Signature import pss
 from Crypto import Random
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5, SHA256
@@ -189,23 +189,22 @@ class Security:
             print(f"[!] File not found: {target_file}")
 
     def sign(self, message, private_key):
-        signer = PKCS1_v1_5.new(private_key)
-        
-        #digest = MD5.new()
-        digest = SHA256.new()
-        digest.update(message)
-        
-        return signer.sign(digest)
+        digest = SHA256.new(message)
+        signature = pss.new(private_key).sign(digest)
+
+        return signature
 
     def verify(self, message, signature, public_key):
-        signer = PKCS1_v1_5.new(public_key)
-
-        #digest = MD5.new()
-        digest = SHA256.new()
-        digest.update(message)
-
+        digest = SHA256.new(message)
+        verifier = pss.new(public_key)
         signature = b64decode(signature)
-        return signer.verify(digest, signature)
+
+        try:
+            verifier.verify(digest, signature)
+            return True
+        
+        except (ValueError, TypeError):
+            return False
 
 def pause():
     print()
@@ -349,7 +348,7 @@ def process_connection(connection, ip_address):
                 print(f"[+] Decrypted end of day report as:\n{decrypted_filename}") 
 
             else:
-                print("[!] Unable to verify that data is from client and integrity of data is not intact.")
+                print("[!] Unable to verify that data is from client and integrity of authentication data is not intact.")
 
                 remove(encrypted_end_of_day_report_filename)
                 print(f"[!] Removed tampered data:\n{encrypted_end_of_day_report_filename}")
@@ -367,7 +366,7 @@ def process_connection(connection, ip_address):
         return
 
     elif user_command == command_from_client.upload_authentication_details_signature:
-        authentication_details_signature = connection.recv(4096).decode()
+        authentication_details_signature = connection.recv(4096)
         server_data.authentication_details_signature = authentication_details_signature
 
         print(f"[+] Received authentication details signature:\n{authentication_details_signature}")

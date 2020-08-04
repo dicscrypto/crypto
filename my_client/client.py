@@ -13,7 +13,7 @@ from subprocess import Popen
 
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
-from Crypto.Signature import PKCS1_v1_5
+from Crypto.Signature import pss
 from Crypto import Random
 from Crypto.Cipher import AES
 from Crypto.Hash import MD5, SHA256
@@ -226,22 +226,22 @@ class Security:
             print(f"[!] File not found: {target_file}")
 
     def sign(self, message, private_key):
-        signer = PKCS1_v1_5.new(private_key)
-        
-        #digest = MD5.new()
-        digest = SHA256.new()
-        digest.update(message)
-        
-        return signer.sign(digest)
+        digest = SHA256.new(message)
+        signature = pss.new(private_key).sign(digest)
+
+        return signature
 
     def verify(self, message, signature, public_key):
-        signer = PKCS1_v1_5.new(public_key)
+        digest = SHA256.new(message)
+        verifier = pss.new(public_key)
+        signature = b64decode(signature)
 
-        #digest = MD5.new()
-        digest = SHA256.new()
-        digest.update(message)
-
-        return signer.verify(digest, signature)
+        try:
+            verifier.verify(digest, signature)
+            return True
+        
+        except (ValueError, TypeError):
+            return False
 
     def password_check(self, new_password):
         lower_regex = re.compile(r'[a-z]+')
@@ -953,7 +953,6 @@ def login():
             authentication_details_signature = client_socket.recv(4096).decode()
             print(f"\n** Authentication details signature from server:\n{authentication_details_signature}")
             
-        authentication_details_signature = b64decode(authentication_details_signature)
         verification_results = client_side_security.verify(authentication_reply_encrypted, authentication_details_signature, server_public_key)
         print(f"\n** Verification results:\n{verification_results}")
 
