@@ -546,9 +546,13 @@ def list_order():
 
         instructions = "\np - payment\nc - clear cart\nb - previous menu"
         instructions += "\nOther inputs will not be accepted."
-        instructions += "\n\nOption -> "
 
-        option = input(instructions).strip()
+        print(instructions)
+
+        message = "\n\nOption -> "
+        animation(message)
+
+        option = input().strip()
 
         if option == 'c':
             client_data.food_cart.clear()
@@ -620,10 +624,14 @@ def make_payment(amount_to_pay):
 
         instructions = "\nOnly digits(floating points) are accepted."
         instructions += "\nEnter \"0\" to cancel payment."
-        instructions += "\n\nPlease enter amount to pay -> $"
+
+        print(instructions)
+
+        message = "\n\nPlease enter the amount to pay -> $"
+        animation(message)
 
         try:
-            amount_from_customer = float(input(instructions).strip())
+            amount_from_customer = float(input().strip())
 
             if amount_from_customer == 0:
                 print("\nYou have chosen to cancel payment.")
@@ -636,8 +644,11 @@ def make_payment(amount_to_pay):
 
             else:
                 customers_change = amount_from_customer - amount_to_pay
-                print(f"\nChange -> ${customers_change:.2f}")
-                print("\nThank you for supporting SPAM!")
+                
+                message = f"\nChange -> ${customers_change:.2f}"
+                message += "\nThank you for supporting SPAM!"
+
+                animation(message)
                 
                 update_day_end()
 
@@ -656,9 +667,13 @@ def specify_quantity(ordered_food_name, ordered_food_price):
         instructions = "Only digits are accepted."
         instructions += "\nMin order - 1, Max order - 10"
         instructions += "\nEnter \"0\" to go back to the previous menu."
-        instructions += "\n\nQuantity -> "
 
-        order_quantity = int(input(instructions).strip())
+        print(instructions)
+
+        message = "\n\nQuantity? "
+        animation(message)
+
+        order_quantity = int(input().strip())
 
         if order_quantity == 0:
             print(f"\nYou have cancelled ordering {ordered_food_name}.")
@@ -695,9 +710,13 @@ def order_food():
         try:
             instructions = "\nEnter \"0\" to exit."
             instructions += "\nOnly digits are accepted."
-            instructions += "\n\nOption -> "
 
-            option = int(input(instructions).strip())
+            print(instructions)
+
+            message = "\n\nOption -> "
+            animation(message)
+
+            option = int(input().strip())
 
             if option == 0: break
 
@@ -728,9 +747,13 @@ def search_food():
 
         instructions = "Only letters and spaces are accepted."
         instructions += "\nEnter \"exit\" to go back to the previous menu."
-        instructions += "\n\nFood to search -> "
 
-        food_to_search = input(instructions).lower().strip()
+        print(instructions)
+
+        message = "\n\nWhat do you feel like eating today? "
+        animation(message)
+
+        food_to_search = input().lower().strip()
 
         # Regex that only accepts letters and spaces.
         regex = r"^[A-Za-z ]*$"
@@ -772,21 +795,35 @@ def decrypt_end_of_day_report():
         print(f"\n** Decrypted end of day report after logging in:\n{client_data.encrypted_end_of_day_report_file}")
         pause()
 
-def about_us():
-    clear_screen()
-    
-    message = "     P7358646 - Suhairy Bin Subori\n"
-    message += "    P7358504 - Muhammad Hairul Anuar Bin Misni\n"
-    message += "    P7358695 - Muhammad Sadiq Bin Murakay\n"
-    message += "    P7358686 - Mohammad Nor ‘Amin Bin Kasmuri\n"
-    message += "    P7358696 - Muhammad Fadzli Bin Roslan\n"
-    message += "    We... are... the... A.... Team!!!"
-    
+def animation(message):
     for letter in message:
         sys.stdout.write(letter)
         sys.stdout.flush()
         time.sleep(0.05)
+
+def about_us():
+    clear_screen()
     
+    message  = "       ,O,\n"
+    message += "      ,OOO,\n"
+    message += "'oooooOOOOOooooo'\n"
+    message += "  `OOOOOOOOOOO`\n"
+    message += "    `OOOOOOO`\n"
+    message += "    OOOO'OOOO\n"
+    message += "   OOO'   'OOO\n"
+    message += "  O'         'O\n\n"
+    message += "    P7358646 - Suhairy Bin Subori\n"
+    message += "    P7358504 - Muhammad Hairul Anuar Bin Misni\n"
+    message += "    P7358695 - Muhammad Sadiq Bin Murakay\n"
+    message += "    P7358686 - Mohammad Nor ‘Amin Bin Kasmuri\n"
+    message += "    P7358696 - Muhammad Fadzli Bin Roslan\n"
+    message += "    P7358704 - Siti Khadijah Binte Mohamed Tawfik\n"
+    message += "\n"
+    message += "    We look at the stars and see ourselves in it..."
+      
+    animation(message)
+
+    print()
     pause()
 
 def admin_menu():
@@ -863,10 +900,14 @@ def user_menu():
 
         instructions = "\nOnly accepts digits."
         instructions += "\nEnter '0' to exit."
-        instructions += "\n\nOption -> "
+
+        print(instructions)
+        
+        message = "\n\nOption -> "
+        animation(message)
 
         try:
-            option = int(input(instructions).strip())
+            option = int(input().strip())
 
             if option == 0: 
                 logout()
