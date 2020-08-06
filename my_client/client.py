@@ -466,11 +466,23 @@ def remotely_encrypt_server_private_key_file():
     while True:
         clear_screen()
 
-        password = input("** Enter the password used to encrypted server's private key file -> ").strip()
+        instructions = "Password requirements:"
+        instructions += "\n\nMin 8 characters in length."
+        instructions += "\n1 uppercase, 1 lowercase, 1 digit, 1 special char.\n"
+
+        print(instructions)
+
+        message = "** Enter the password -> "
+        animation(message)
+
+        password = input().strip()
         error = client_side_security.password_check(password)
 
         if error == "":
-            repeat_password = input("** Enter the password again that is used to encrypt server's private key file -> ").strip()
+            message = "** Enter the password again -> "
+            animation(message)
+
+            repeat_password = input().strip()
 
             if repeat_password == password:
                 password = hashlib.sha256(password.encode()).digest()
@@ -511,12 +523,18 @@ def locally_encrypt_client_private_key_file():
 
         print(instructions)
 
-        password = input("** Please enter password -> ").strip()
+        message = "** Please enter password -> "
+        animation(message)
+
+        password = input().strip()
 
         error = client_side_security.password_check(password)
 
         if error == "":
-            repeat_password = input("** Please re-enter password again -> ").strip()
+            message = "** Please re-enter password again -> "
+            animation(message)
+
+            repeat_password = input().strip()
 
             if repeat_password == password:
                 client_side_security.aes_encrypt_file(password, client_side_security.private_key_file, client_side_security.private_key_file_encrypted)
@@ -800,7 +818,7 @@ def animation(message):
         sys.stdout.write(letter)
         sys.stdout.flush()
         time.sleep(0.05)
-
+   
 def about_us():
     clear_screen()
     
@@ -818,8 +836,10 @@ def about_us():
     message += "    P7358686 - Mohammad Nor ‘Amin Bin Kasmuri\n"
     message += "    P7358696 - Muhammad Fadzli Bin Roslan\n"
     message += "    P7358704 - Siti Khadijah Binte Mohamed Tawfik\n"
-    message += "\n"
-    message += "    We look at the stars and see ourselves in it..."
+    message += "    P7358639 - Lim Hwee Hong"
+    message += "\n\n"
+    message += "    We look at the stars and see ourselves in it...\n\n"
+    message += "     The A-team cause when we do stuff, we mean business..."
       
     animation(message)
 
@@ -842,10 +862,14 @@ def admin_menu():
         
         instructions = "\nOnly accepts digits."
         instructions += "\nEnter '0' to exit."
-        instructions += "\n\nOption -> "
+
+        print(instructions)
+
+        message = "\n\nOption -> "
+        animation(message)
 
         try:
-            option = int(input(instructions).strip())
+            option = int(input().strip())
 
             if option == 0: 
                 logout()
