@@ -979,8 +979,11 @@ def login():
         clear_screen()
         print_header("Login")
 
-        username = input("** Username -> ").lower().strip()
-        password = input("** Password -> ").strip()
+        animation("** Username: ")
+        username = input().lower().strip()
+
+        animation("** Password: ")
+        password = input().strip()
 
         # To get its hash equivalent. If password is correct, hash will match.
         hashed_password = hashlib.md5(password.encode()).hexdigest() 
@@ -1059,7 +1062,8 @@ def initialise():
             clear_screen()
             print_header("Client - Decrypt private key file")
 
-            password = input("** Input password to decrypt private key file -> ").strip()
+            animation("** Input password to decrypt private key file: ")
+            password = input().strip()
             client_side_security.aes_decrypt_file(password, client_side_security.private_key_file_encrypted, client_side_security.private_key_file)
 
             decrypting_result = check_error_after_decryption(client_side_security.private_key_file)

@@ -531,12 +531,19 @@ def start_server():
         except: pass
         return
 
+def animation(message):
+    for letter in message:
+        sys.stdout.write(letter)
+        sys.stdout.flush()
+        time.sleep(0.05)
+
 def initialise():
     while True:
         clear_screen()
         print_header("Server - Decrypt private key file")
         
-        password = input("** Input password to decrypt private key file -> ").strip()
+        animation("** Input password to decrypt private key file: ")
+        password = input().strip()
         server_side_security.aes_decrypt_file(password, server_side_security.private_key_file_encrypted, server_side_security.private_key_file)
 
         decrypting_result = check_error_after_decryption(server_side_security.private_key_file)

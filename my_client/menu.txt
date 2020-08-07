@@ -10,13 +10,12 @@ Tuesday,Spaghetti Bolognaise,5.4
 Wednesday,Mee Rebus,4.5
 Wednesday,Asam Laksa,4.9
 Wednesday,Laksa Royale,5.9
-Thursday,Mac Spicy Meal,5.0
-Thursday,Double Mac Spicy Meal,8.0
-Thursday,Samurai Burger Meal,7.0
-Thursday,Ebi Burger Meal,6.5
-Friday,Tom Yam,7.0
-Friday,Nasi Paprik,5.5
-Friday,Nasi Goreng Paprik,7.0
+Thursday,Tom Yam,7.0
+Thursday,Nasi Paprik,5.5
+Thursday,Nasi Goreng Paprik,7.0
+Friday,Double Mac Spicy Meal,8.0
+Friday,Samurai Burger Meal,7.0
+Friday,Ebi Burger Meal,6.5
 Saturday,Rendang Chicken,5.0
 Saturday,Rendang Beef,6.0
 Saturday,Ayam Penyet,6.5
