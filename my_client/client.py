@@ -317,25 +317,43 @@ def upload_end_of_day_report_and_perform_integrity_check():
         download_file(command_to_server.download_server_public_key_file, client_side_security.server_public_key_file)
         print(f"\n** Downloaded server's public key file:\n{client_side_security.server_public_key_file}")
 
-        server_public_key = RSA.import_key(open(client_side_security.server_public_key_file).read())
-        client_side_security.rsa_encrypt_file(client_data.end_of_day_report_file, client_data.encrypted_end_of_day_report_file, server_public_key)
-        print(f"\n** Successfully encrypted:\n{client_data.end_of_day_report_file}")
-
-        long_pause()
-
-        data = open(client_data.encrypted_end_of_day_report_file, "rb").read()
         client_private_key = RSA.import_key(open(client_side_security.private_key_file).read())
-        end_of_day_report_signature = b64encode(client_side_security.sign(data, client_private_key))
-        print(f"\n** Data signed with private key:\n{end_of_day_report_signature.decode()}")
+        server_public_key = RSA.import_key(open(client_side_security.server_public_key_file).read())
+        
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            client_socket.connect((connect_to_server.ip_address, connect_to_server.port))
+            client_socket.send(command_to_server.upload_end_of_day_report.encode())
+ 
+            data_corrupted = False
+            count = 0
+ 
+            with open(client_data.end_of_day_report_file, "rb") as plaintext_file:
+                plaintext_block = plaintext_file.read(64)
 
-        upload_signature(command_to_server.upload_end_of_day_report_signature, end_of_day_report_signature)
-        print("\n** Successfully uploaded signature.")
+                while plaintext_block != b"":
+                    encrypted_block = client_side_security.rsa_encrypt(plaintext_block, server_public_key)
+                    print(f"\n** BLOCK {count}. {len(encrypted_block)} , Encrypted block:\n{b64encode(encrypted_block).decode()}")
 
-        upload_file(command_to_server.upload_end_of_day_report, client_data.encrypted_end_of_day_report_file)
-        print(f"\n** Successfully uploaded:\n{client_data.encrypted_end_of_day_report_file}")
+                    encrypted_block_signature = client_side_security.sign(encrypted_block, client_private_key)
+                    print(f"\n** BLOCK {count}. {len(encrypted_block_signature)} , Signature:\n{b64encode(encrypted_block_signature).decode()}")
 
-        remove(client_data.encrypted_end_of_day_report_file)
-        print(f"\n** Removed:\n{client_data.encrypted_end_of_day_report_file}")
+                    count += 1
+
+                    encrypted_block += encrypted_block_signature
+
+                    client_socket.send(encrypted_block)
+                    short_pause()
+
+                    server_reply = client_socket.recv(4096).decode()
+                    
+                    if server_reply == "corrupted":
+                        data_corrupted = True
+                        break
+
+                    plaintext_block = plaintext_file.read(64)
+
+        if data_corrupted == True: print("\n** Uploaded report may be tampered or corrupted. Please re-upload report again.")
+        else: print("\n** Report successfully uploaded!")                
 
         pause()
 

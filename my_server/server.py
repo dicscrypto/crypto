@@ -204,7 +204,7 @@ class Security:
             return True
         
         except (ValueError, TypeError):
-            return False
+            return False 
 
 def pause():
     print()
@@ -319,42 +319,59 @@ def process_connection(connection, ip_address):
        
     elif user_command == command_from_client.upload_end_of_day_report:
         encrypted_end_of_day_report_filename = server_data.encrypted_end_of_day_report_file_base + ip_address + " - " + get_formatted_date_and_time() + ".rsa"
-        download_file(connection, encrypted_end_of_day_report_filename)
 
-        print(f"[+] Saving encrypted end of day report as:\n{encrypted_end_of_day_report_filename}")
+        local_md5_of_client_public_key_file = server_side_security.get_file_hash(server_side_security.client_public_key_file)
+        print(f"** Client Public Key File MD5: {local_md5_of_client_public_key_file}")
+        print(f"** Downloaded Client Public Key File MD5: {server_side_security.md5_of_client_public_key_file}")
+        
+        if local_md5_of_client_public_key_file == server_side_security.md5_of_client_public_key_file: print("[+] Hash check passed: No tampering detected on client's public key file.")
+        else: print("[!] Hash check failed: Tampering detected on client's public key file.")
 
-        try:        
-            data = open(encrypted_end_of_day_report_filename, "rb").read()
+        client_public_key = RSA.import_key(open(server_side_security.client_public_key_file).read())
+        server_private_key = RSA.import_key(open(server_side_security.private_key_file).read())
 
-            local_md5_of_client_public_key_file = server_side_security.get_file_hash(server_side_security.client_public_key_file)
-            print(f"** Client Public Key File MD5: {local_md5_of_client_public_key_file}")
-            print(f"** Downloaded Client Public Key File MD5: {server_side_security.md5_of_client_public_key_file}")
-            
-            if local_md5_of_client_public_key_file == server_side_security.md5_of_client_public_key_file: print("[+] Hash check passed: No tampering detected on client's public key file.")
-            else: print("[!] Hash check failed: Tampering detected on client's public key file.")
+        end_of_block = False
+        data_corrupted = False
 
-            client_public_key = RSA.import_key(open(server_side_security.client_public_key_file).read())
-            verification_result = server_side_security.verify(data, server_data.encrypted_end_of_day_report_signature, client_public_key)
-            print(f"[I] Signature verification results: {verification_result}")
+        count = 0 
+        data_list = list()
 
-            if verification_result == True:
-                print("[I] Successfully verified that data is indeed from client and integrity is intact.")
+        while not end_of_block:
+            signature_and_encrypted_block = connection.recv(4096)
 
-                decrypted_filename = server_data.end_of_day_report_base + ip_address + " - " + get_formatted_date_and_time() + ".txt"
-
-                private_key = RSA.import_key(open(server_side_security.private_key_file).read())
-                server_side_security.rsa_decrypt_file(encrypted_end_of_day_report_filename, decrypted_filename, private_key)
+            if signature_and_encrypted_block != b'':
+                encrypted_block = signature_and_encrypted_block[0:256]
+                signature_block = signature_and_encrypted_block[256:]
                 
-                print(f"[+] Decrypted end of day report as:\n{decrypted_filename}") 
+                print(f"\n** BLOCK {count}. {len(signature_block)} Signature:\n{b64encode(signature_block).decode()}")
 
+                verification_result = server_side_security.verify(encrypted_block, b64encode(signature_block), client_public_key)
+
+                if verification_result == True:
+                    decrypted_block = server_side_security.rsa_decrypt(encrypted_block, server_private_key)
+                    print(f"\n** BLOCK {count}. {len(decrypted_block)} Decrypted:\n{decrypted_block}")
+
+                    count += 1
+                    data_list.append(decrypted_block)
+
+                    connection.send(b"ok")
+
+                else:
+                    connection.send(b"corrupted")
+                    print(f"[!] Detected integrity issues on BLOCK {count}.")
+
+                    data_corrupted = True
+                    break
+                    
             else:
-                print("[!] Unable to verify that data is from client and integrity of authentication data is not intact.")
+                end_of_block = True
 
-                remove(encrypted_end_of_day_report_filename)
-                print(f"[!] Removed tampered data:\n{encrypted_end_of_day_report_filename}")
+        with open(encrypted_end_of_day_report_filename, 'w', newline = '\n') as ef:
+            if data_corrupted == False:
+                for data in data_list:
+                    ef.write(data)
 
-        except Exception as error:
-            print(f"[!] Error: {error}")
+                print(f"\n** Successfully wrote decrypted data to:\n{encrypted_end_of_day_report_filename}")
 
         return
 
