@@ -38,7 +38,6 @@ class Data:
         self.search_hits_dict = dict()
         self.ordered_food_dict = dict()
         self.food_cart = dict()
-        self.day_end_dict = dict()
 
         self.md5_of_menu_file = ""
 
@@ -630,25 +629,27 @@ def list_food(food_dict):
     for count, food_name in enumerate(food_dict, 1):
         food_price = food_dict.get(food_name)
         print(f"{count}. {food_name.ljust(35)} ${food_price:.2f}")
- 
+
+def get_formatted_date_and_time():
+    now = datetime.datetime.now()
+    formatted_date_and_time = now.strftime("%Y-%m-%d_%H%M")
+
+    return(formatted_date_and_time)
+
 def update_day_end():
-    for food_name in client_data.food_cart:
-        price_and_quantity_list = client_data.food_cart.get(food_name)
-        food_quantity = price_and_quantity_list[1]
+    data_to_write = f"### {get_formatted_date_and_time()} ###\n"
 
-        if food_name in client_data.day_end_dict:
-            updated_quantity = client_data.day_end_dict.get(food_name) + food_quantity
-            client_data.day_end_dict[food_name] = updated_quantity
+    with open(client_data.end_of_day_report_file, "a") as report_to_write:
+        for food_name in client_data.food_cart:
+            price_and_quantity_list = client_data.food_cart.get(food_name)
+            
+            food_price = price_and_quantity_list[0]
+            food_quantity = price_and_quantity_list[1]
 
-        else: client_data.day_end_dict[food_name] = food_quantity
+            data_to_write += f"{food_name} X {food_quantity} , ${food_price:.2f} ea\n"
 
-    data_to_write = ""
-    with open(client_data.end_of_day_report_file, "w") as report_to_write:
-        for food_name in client_data.day_end_dict:
-            food_quantity = client_data.day_end_dict.get(food_name)
-            data_to_write += f"{food_name},{food_quantity}\n"
-
-        report_to_write.write(data_to_write.strip())
+        data_to_write += f"### END OF TRANSACTION ###\n\n"
+        report_to_write.write(data_to_write)
     
     Popen(["notepad.exe", client_data.end_of_day_report_file])
 
