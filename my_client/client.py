@@ -10,6 +10,7 @@ from base64 import b64encode, b64decode
 from datetime import date
 from calendar import day_name
 from subprocess import Popen
+from glob import glob
 
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
@@ -982,6 +983,9 @@ def logout():
         print(f"\n** Removed -> {client_side_security.private_key_file}")
         short_pause()  
     
+    encrypt_all_report()
+    
+    '''
     end_of_day_report_file_exist = path.exists(client_data.end_of_day_report_file)
 
     if end_of_day_report_file_exist:
@@ -991,8 +995,11 @@ def logout():
 
         print(f"\n** Encrypt end of day report with client public key file to protect data after logging out:\n{client_data.encrypted_end_of_day_report_file}")
         pause()
+    '''
 
 def login():
+    decrypt_all_report()
+
     while True:
         clear_screen()
         print_header("Login")
@@ -1062,6 +1069,82 @@ def login():
         else:
             print("\n[!] Authentication details has been tampered. Will skip processing login this time.")
             pause()
+
+def encrypt_all_report():
+    unencrypted_end_of_day_report_filter = getcwd() + "\\day*.txt"
+    list_of_unencrypted_end_of_day_report = glob(unencrypted_end_of_day_report_filter)
+
+    server_public_key = RSA.import_key(open(client_side_security.public_key_file).read())
+    encrypted_block_list = list()
+    count = 0
+
+    if len(list_of_unencrypted_end_of_day_report) > 0:
+        for text_file in list_of_unencrypted_end_of_day_report:
+            with open(text_file, "rb") as plaintext_file:
+                plaintext_block = plaintext_file.read(64)
+
+                while plaintext_block != b"":
+                    encrypted_block = client_side_security.rsa_encrypt(plaintext_block, server_public_key)
+                    print(f"\n** BLOCK {count}. {len(encrypted_block)} , Encrypted block:\n{b64encode(encrypted_block).decode()}")
+
+                    encrypted_block_list.append(encrypted_block)
+                    count += 1
+
+                    plaintext_block = plaintext_file.read(64)
+
+            encrypted_filename = text_file.split("txt")[0] + "rsa"
+            
+            with open(encrypted_filename, "wb") as ef:
+                for encrypted_block in encrypted_block_list:
+                    ef.write(encrypted_block)
+
+                encrypted_block_list.clear()
+                print(f"** Encrypted:\n{text_file}\n")
+
+                remove(text_file)
+                print(f"** Removed:\n{text_file}\n")
+
+    else:
+        print("** No report files to encrypt...")
+
+def decrypt_all_report():
+    clear_screen()
+
+    encrypted_end_of_day_report_filter = getcwd() + "\\day*.rsa"
+    list_of_encrypted_end_of_day_report = glob(encrypted_end_of_day_report_filter)
+
+    server_private_key = RSA.import_key(open(client_side_security.private_key_file).read())
+    plaintext_block_list = list()
+    count = 0
+
+    if len(list_of_encrypted_end_of_day_report) > 0:
+        for encrypted_file in list_of_encrypted_end_of_day_report:
+            with open(encrypted_file, "rb") as ef:
+                encrypted_block = ef.read(256)
+
+                while encrypted_block!= b"":
+                    decrypted_block = client_side_security.rsa_decrypt(encrypted_block, server_private_key)
+                    print(f"** BLOCK {count}. {len(decrypted_block)} , Decrypted block:\n{decrypted_block}\n")
+
+                    plaintext_block_list.append(decrypted_block)
+                    count += 1
+
+                    encrypted_block = ef.read(256)
+
+            decrypted_filename = encrypted_file.split("rsa")[0] + "txt"
+            
+            with open(decrypted_filename, "w", newline = "\n") as df:
+                for plaintext_block in plaintext_block_list:
+                    df.write(plaintext_block)
+
+                plaintext_block_list.clear()
+                print(f"** Decrypted:\n{encrypted_file}\n")
+
+        pause()
+
+    else:
+        print("** No report files to decrypt...")
+        short_pause()
 
 def initialise():
     clear_screen()

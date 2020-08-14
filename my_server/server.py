@@ -318,7 +318,7 @@ def process_connection(connection, ip_address):
         print(f"[+] Saving client's public key file as:\n{server_side_security.client_public_key_file}")
        
     elif user_command == command_from_client.upload_end_of_day_report:
-        encrypted_end_of_day_report_filename = server_data.encrypted_end_of_day_report_file_base + ip_address + " - " + get_formatted_date_and_time() + ".rsa"
+        end_of_day_report_filename = server_data.encrypted_end_of_day_report_file_base + ip_address + " - " + get_formatted_date_and_time() + ".txt"
 
         local_md5_of_client_public_key_file = server_side_security.get_file_hash(server_side_security.client_public_key_file)
         print(f"** Client Public Key File MD5: {local_md5_of_client_public_key_file}")
@@ -366,12 +366,12 @@ def process_connection(connection, ip_address):
             else:
                 end_of_block = True
 
-        with open(encrypted_end_of_day_report_filename, 'w', newline = '\n') as ef:
+        with open(end_of_day_report_filename, 'w', newline = '\n') as eod:
             if data_corrupted == False:
                 for data in data_list:
-                    ef.write(data)
+                    eod.write(data)
 
-                print(f"\n** Successfully wrote decrypted data to:\n{encrypted_end_of_day_report_filename}")
+                print(f"\n** Successfully wrote decrypted data to:\n{end_of_day_report_filename}")
 
         return
 
@@ -409,12 +409,7 @@ def process_connection(connection, ip_address):
         print("[!] Shutdown signal received. Server shutting down.")
         short_pause()
 
-        unencrypted_end_of_day_report_filter = getcwd() + "\\day*.txt"
-        list_of_unencrypted_end_of_day_report = glob(unencrypted_end_of_day_report_filter)
-
-        for text_file in list_of_unencrypted_end_of_day_report:
-            remove(text_file)
-            print(f"** Deleted {text_file}")
+        encrypt_all_report()
 
         short_pause()
 
@@ -554,6 +549,82 @@ def animation(message):
         sys.stdout.flush()
         time.sleep(0.05)
 
+def encrypt_all_report():
+    unencrypted_end_of_day_report_filter = getcwd() + "\\day*.txt"
+    list_of_unencrypted_end_of_day_report = glob(unencrypted_end_of_day_report_filter)
+
+    server_public_key = RSA.import_key(open(server_side_security.public_key_file).read())
+    encrypted_block_list = list()
+    count = 0
+
+    if len(list_of_unencrypted_end_of_day_report) > 0:
+        for text_file in list_of_unencrypted_end_of_day_report:
+            with open(text_file, "rb") as plaintext_file:
+                plaintext_block = plaintext_file.read(64)
+
+                while plaintext_block != b"":
+                    encrypted_block = server_side_security.rsa_encrypt(plaintext_block, server_public_key)
+                    print(f"\n** BLOCK {count}. {len(encrypted_block)} , Encrypted block:\n{b64encode(encrypted_block).decode()}")
+
+                    encrypted_block_list.append(encrypted_block)
+                    count += 1
+
+                    plaintext_block = plaintext_file.read(64)
+
+            encrypted_filename = text_file.split("txt")[0] + "rsa"
+            
+            with open(encrypted_filename, "wb") as ef:
+                for encrypted_block in encrypted_block_list:
+                    ef.write(encrypted_block)
+
+                encrypted_block_list.clear()
+                print(f"** Encrypted:\n{text_file}\n")
+
+                remove(text_file)
+                print(f"** Removed:\n{text_file}\n")
+
+    else:
+        print("** No report files to encrypt...")
+
+def decrypt_all_report():
+    clear_screen()
+
+    encrypted_end_of_day_report_filter = getcwd() + "\\day*.rsa"
+    list_of_encrypted_end_of_day_report = glob(encrypted_end_of_day_report_filter)
+
+    server_private_key = RSA.import_key(open(server_side_security.private_key_file).read())
+    plaintext_block_list = list()
+    count = 0
+
+    if len(list_of_encrypted_end_of_day_report) > 0:
+        for encrypted_file in list_of_encrypted_end_of_day_report:
+            with open(encrypted_file, "rb") as ef:
+                encrypted_block = ef.read(256)
+
+                while encrypted_block!= b"":
+                    decrypted_block = server_side_security.rsa_decrypt(encrypted_block, server_private_key)
+                    print(f"** BLOCK {count}. {len(decrypted_block)} , Decrypted block:\n{decrypted_block}\n")
+
+                    plaintext_block_list.append(decrypted_block)
+                    count += 1
+
+                    encrypted_block = ef.read(256)
+
+            decrypted_filename = encrypted_file.split("rsa")[0] + "txt"
+            
+            with open(decrypted_filename, "w", newline = "\n") as df:
+                for plaintext_block in plaintext_block_list:
+                    df.write(plaintext_block)
+
+                plaintext_block_list.clear()
+                print(f"** Decrypted:\n{encrypted_file}\n")
+
+        pause()
+
+    else:
+        print("** No report files to decrypt...")
+        short_pause()
+
 def initialise():
     while True:
         clear_screen()
@@ -566,6 +637,8 @@ def initialise():
         decrypting_result = check_error_after_decryption(server_side_security.private_key_file)
 
         if decrypting_result == "ok": 
+            decrypt_all_report()
+
             return_code = start_server()
 
             if return_code == "shutdown_server": break
