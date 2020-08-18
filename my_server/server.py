@@ -6,10 +6,18 @@ import hashlib
 import traceback
 import sqlite3
 
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from string import Template
+from calendar import day_name
+from datetime import date
+
 from os import getcwd, system, path, remove
 from base64 import b64encode, b64decode
 from glob import glob
 
+from Crypto.Util.Padding import pad, unpad
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Signature import pss
@@ -32,6 +40,9 @@ class Data:
         self.md5_of_menu_file = "" 
         self.encrypted_end_of_day_report_signature = ""
         self.authentication_details_signature = ""
+
+        self.email_address = ""
+        self.email_password = ""
 
 class Command:
     def __init__(self):
@@ -85,17 +96,10 @@ class Security:
 
         print(f"[I] Done creating Public Key:\n{self.public_key_file}")
 
-    def pad(self, plaintext):
-        # AES.block_size = 16
-        padding_length = AES.block_size - len(plaintext) % AES.block_size   
-        padded_plaintext = plaintext + b"\0" * padding_length # b"\0" : NULL
-
-        return padded_plaintext
-
     def aes_encrypt(self, plaintext, password):
         #private_key = hashlib.sha256(password.encode()).digest() # For local use.
         private_key = password  # For remote use.
-        padded_plaintext = self.pad(plaintext)
+        padded_plaintext = pad(plaintext, AES.block_size)
         iv = Random.new().read(AES.block_size)
 
         cipher_aes = AES.new(private_key, AES.MODE_CBC, iv)
@@ -126,7 +130,7 @@ class Security:
         cipher_aes = AES.new(private_key, AES.MODE_CBC, iv)
 
         plaintext = cipher_aes.decrypt(ciphertext[16:]) # After 16 bytes.
-        plaintext = plaintext.rstrip(b"\0") # Strips paddings/NULL.
+        plaintext = unpad(plaintext, AES.block_size)
 
         return plaintext
 
@@ -276,6 +280,66 @@ def authenticate_user(username, password):
         print("[!] Unable to find DB file.")
         sys.exit(1)
 
+def load_email_credentials(filename):
+    with open(filename, "r") as email_credential_file:
+        creds = email_credential_file.readline()
+        creds = creds.split()
+
+        server_data.email_address = creds[0]
+        server_data.email_password = creds[1]
+
+def get_contacts(filename):
+    names = list()
+    emails = list()
+
+    with open(filename, "r") as contacts_file:
+        for individual_contact in contacts_file:
+            names.append(individual_contact.split()[0])
+            emails.append(individual_contact.split()[1])
+
+    return names, emails
+
+def read_template(filename):
+    with open(filename, "r") as template_file:
+        template_file_content = template_file.read()
+
+    return Template(template_file_content)
+
+def send_email(end_of_day_report_filename, current_day, current_time):
+    load_email_credentials("email_credentials.txt")
+    names, emails = get_contacts("contacts.txt")
+    message_template = read_template("message.txt")
+
+    try: 
+        smtp_connection = smtplib.SMTP(host = "smtp.office365.com", port = 587)
+        smtp_connection.starttls()
+        smtp_connection.login(server_data.email_address, server_data.email_password)
+
+        for name, email in zip(names, emails):
+            email_message = MIMEMultipart()
+
+            message_to_be_sent = message_template.substitute(PERSON_NAME = name.title(), REPORT_NAME = end_of_day_report_filename)
+
+            print("\n" + "#" * 64)
+            print(f"\n** Sent email: \n{message_to_be_sent}")
+            print("\n" + "#" * 64)
+
+            email_message['From'] = server_data.email_address
+            email_message['To'] = email
+            email_message['Subject'] = f"Report has been uploaded to server @{current_day} - {current_time}"
+            email_message.attach(MIMEText(message_to_be_sent, 'plain'))
+
+            smtp_connection.send_message(email_message)
+            del email_message
+
+            short_pause()
+
+        smtp_connection.quit()
+
+    except Exception as error:
+        print(f"[!] Error while sending email: {error}")
+        pass
+
 def process_connection(connection, ip_address): 
     user_command = connection.recv(4096).decode()
 
@@ -373,6 +437,10 @@ def process_connection(connection, ip_address):
 
                 print(f"\n** Successfully wrote decrypted data to:\n{end_of_day_report_filename}")
 
+        current_day = day_name[date.today().weekday()]
+        current_time = datetime.datetime.now().strftime("%H:%M:%S")
+        send_email(end_of_day_report_filename, current_day, current_time)
+
         return
 
     elif user_command == command_from_client.upload_end_of_day_report_signature:
@@ -410,6 +478,7 @@ def process_connection(connection, ip_address):
         short_pause()
 
         encrypt_all_report()
+        encrypt_email_creds_file()
 
         short_pause()
 
@@ -549,6 +618,78 @@ def animation(message):
         sys.stdout.flush()
         time.sleep(0.05)
 
+def decrypt_email_creds_file():
+    clear_screen()
+    server_private_key = RSA.import_key(open(server_side_security.private_key_file).read())
+    
+    encrypted_email_credentials_file = getcwd() + "\\email_credentials.rsa"
+    encrypted_email_credentials_file_exists = path.exists(encrypted_email_credentials_file)
+
+    if encrypted_email_credentials_file_exists:
+        with open(encrypted_email_credentials_file, "rb") as ef:
+            encrypted_block = ef.read(256)
+            plaintext_block_list = list()
+            count = 0
+
+            while encrypted_block!= b"":
+                decrypted_block = server_side_security.rsa_decrypt(encrypted_block, server_private_key)
+                print(f"** BLOCK {count}. {len(decrypted_block)} , Decrypted block:\n{decrypted_block}\n")
+
+                plaintext_block_list.append(decrypted_block)
+                count += 1
+
+                encrypted_block = ef.read(256)
+
+        decrypted_filename = encrypted_email_credentials_file.split("rsa")[0] + "txt"
+
+        with open(decrypted_filename, "w", newline = "\n") as df:
+            for plaintext_block in plaintext_block_list:
+                df.write(plaintext_block) 
+
+        print(f"\n** Decrypted:\n{encrypted_email_credentials_file}\n")
+        pause()
+    
+    else:
+        print(f"** Unable to locate:\n{encrypted_email_credentials_file}")
+        short_pause()
+  
+def encrypt_email_creds_file():
+    clear_screen()
+    server_public_key = RSA.import_key(open(server_side_security.public_key_file).read())
+    
+    email_credentials_file = getcwd() + "\\email_credentials.txt"
+    email_credentials_file_exists = path.exists(email_credentials_file)
+
+    if email_credentials_file_exists:
+        with open(email_credentials_file, "rb") as plaintext_file:
+            plaintext_block = plaintext_file.read(64)
+            encrypted_block_list = list()
+            count = 0
+
+            while plaintext_block != b"":
+                encrypted_block = server_side_security.rsa_encrypt(plaintext_block, server_public_key)
+                print(f"\n** BLOCK {count}. {len(encrypted_block)} , Encrypted block:\n{b64encode(encrypted_block).decode()}")
+
+                encrypted_block_list.append(encrypted_block)
+                count += 1
+
+                plaintext_block = plaintext_file.read(64)
+
+        encrypted_filename = email_credentials_file.split("txt")[0] + "rsa"
+
+        with open(encrypted_filename, "wb") as ef:
+            for encrypted_block in encrypted_block_list:
+                ef.write(encrypted_block)
+
+        print(f"\n** Encrypted:\n{email_credentials_file}\n")
+
+        remove(email_credentials_file)
+
+        print(f"\n** Removed:\n{email_credentials_file}")
+
+    else:
+        print(f"** Unable to locate:\n{email_credentials_file}")
+
 def encrypt_all_report():
     unencrypted_end_of_day_report_filter = getcwd() + "\\day*.txt"
     list_of_unencrypted_end_of_day_report = glob(unencrypted_end_of_day_report_filter)
@@ -638,6 +779,7 @@ def initialise():
 
         if decrypting_result == "ok": 
             decrypt_all_report()
+            decrypt_email_creds_file()
 
             return_code = start_server()
 

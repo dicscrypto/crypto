@@ -12,6 +12,7 @@ from calendar import day_name
 from subprocess import Popen
 from glob import glob
 
+from Crypto.Util.Padding import pad, unpad
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.Signature import pss
@@ -122,17 +123,10 @@ class Security:
 
         print(f"** Done creating Public Key:\n{self.public_key_file}")
 
-    def pad(self, plaintext):
-        # AES.block_size = 16
-        padding_length = AES.block_size - len(plaintext) % AES.block_size   
-        padded_plaintext = plaintext + b"\0" * padding_length # b"\0" : NULL
-
-        return padded_plaintext
-
     def aes_encrypt(self, plaintext, password):
         private_key = hashlib.sha256(password.encode()).digest() # For local use.
         #private_key = password  # For remote use.
-        padded_plaintext = self.pad(plaintext)
+        padded_plaintext = pad(plaintext, AES.block_size)
         iv = Random.new().read(AES.block_size)
 
         cipher_aes = AES.new(private_key, AES.MODE_CBC, iv)
@@ -163,7 +157,7 @@ class Security:
         cipher_aes = AES.new(private_key, AES.MODE_CBC, iv)
 
         plaintext = cipher_aes.decrypt(ciphertext[16:]) # After 16 bytes.
-        plaintext = plaintext.rstrip(b"\0") # Strips paddings/NULL.
+        plaintext = unpad(plaintext, AES.block_size)
 
         return plaintext
 

@@ -1,0 +1,10 @@
+Dear ${PERSON_NAME},
+
+This is to inform you that report been uploaded successfully.
+
+${REPORT_NAME}
+
+Regards,
+SPAM 2 bot
+
+PLEASE DO NOT REPLY TO THIS MESSAGE.
